@@ -6,8 +6,8 @@ import zio.schema.Schema
 import zio.test.Assertion.{equalTo, isRight}
 import zio.test.TestAspect.timeout
 import zio.test._
+
 import scala.util.control.NonFatal
-import zio.schema.codec.jsoniter.JsoniterCodec
 
 object JsoniterCodecJVMSpec extends ZIOSpecDefault {
 

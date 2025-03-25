@@ -3,8 +3,8 @@ package zio.schema.codec.jsoniter.internal
 import zio.prelude.NonEmptyMap
 import zio.schema._
 import zio.schema.annotation._
-import zio.stream.ZStream
 import zio.schema.codec.jsoniter.internal.Data._
+import zio.stream.ZStream
 import zio.test.Assertion._
 import zio.test.TestAspect.ignore
 import zio.test._
@@ -420,7 +420,6 @@ private[jsoniter] trait EncoderSpecs {
             Schema.nonEmptySet(Value.schema),
             nonEmptySet,
             nonEmptySet.map { case Value(x, y) => s"""{"first":$x,"second":$y}""" }.mkString("[", ",", "]"),
-            debug = true,
           )
         }
       },

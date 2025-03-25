@@ -1,5 +1,6 @@
 package zio.schema.codec.jsoniter
 
+import com.github.plokhotnyuk.jsoniter_scala.core._
 import zio.Console.*
 import zio.*
 import zio.schema.*
@@ -7,11 +8,11 @@ import zio.schema.annotation.*
 import zio.test.Assertion.*
 import zio.test.TestAspect.*
 import zio.test.{assert, assertTrue, Spec, TestEnvironment, ZIOSpecDefault}
+import scala.util.Try
 
 object VersionSpecificJsoniterCodecSpec extends VersionSpecificCodecSpec {
 
-  override protected def schemaEncoder[A: Schema]: Encoder[A] = JsoniterCodec.schemaEncoder(Schema[A])
-  override protected def schemaDecoder[A: Schema]: Decoder[A] = JsoniterCodec.schemaDecoder(Schema[A])
+  override protected def schemaCodec[A: Schema]: JsonValueCodec[A] = JsoniterCodec.schemaCodec(Schema[A])
 
   def spec: Spec[TestEnvironment, Any] =
     suite("VersionSpecificJsoniterCodecSpec")(
@@ -21,22 +22,22 @@ object VersionSpecificJsoniterCodecSpec extends VersionSpecificCodecSpec {
 
 trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
 
-  protected def schemaEncoder[A: Schema]: Encoder[A]
-  protected def schemaDecoder[A: Schema]: Decoder[A]
+  protected def schemaCodec[A: Schema]: JsonValueCodec[A]
 
   protected val customSuite = suite("custom")(
     suite("default value schema")(
       test("default value at last field") {
-        val result = decode("""{"orderId": 1}""")(using schemaDecoder(using Schema[WithDefaultValue]))
-        assertTrue(result.isRight)
+        val result =
+          Try(readFromString("""{"orderId": 1}""")(using schemaCodec(using Schema[WithDefaultValue])))
+        assertTrue(result.toEither.isRight)
       }
     ),
     suite("enum with discrimintator")(
       test("default value at last field") {
         val value = BaseB("a", Inner(1))
         val json = """{"type":"BaseB","a":"a","b":{"i":1}}"""
-        assert(decode(json)(using schemaDecoder(using Schema[Base])))(equalTo(Right(value))) &&
-        assert(schemaEncoder(using Schema[Base]).apply(value).noSpaces)(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using Schema[Base])))(equalTo(Right(value))) &&
+        assert(writeToString(value)(schemaCodec(using Schema[Base])))(equalTo(json))
       }
     ),
     suite("union types")(
@@ -44,15 +45,15 @@ trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
         val schema = Schema.chunk(DeriveSchema.gen[Int | String | Boolean])
         val json = """["abc",1,true]"""
         val value = Chunk[Int | String | Boolean]("abc", 1, true)
-        assert(decode(json)(using schemaDecoder(using schema)))(equalTo(Right(value))) &&
-        assert(schemaEncoder(using schema).apply(value).noSpaces)(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
+        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
       },
       test("union type of enums") {
         val schema = Schema.chunk(Schema[Result])
         val json = """[{"res":{"Left":"Err1"}},{"res":{"Left":"Err21"}},{"res":{"Right":{"i":1}}}]"""
         val value = Chunk[Result](Result(Left(ErrorGroup1.Err1)), Result(Left(ErrorGroup2.Err21)), Result(Right(Value(1))))
-        assert(decode(json)(using schemaDecoder(using schema)))(equalTo(Right(value))) &&
-        assert(schemaEncoder(using schema).apply(value).noSpaces)(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
+        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
       },
       test("union type of custom types") {
         import UnionValue.given
@@ -60,8 +61,8 @@ trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
         val schema = Schema.map(Schema[String], Schema[UnionValue])
         val json = """{"a":1,"b":"toto","c":true,"d":null}"""
         val value = Map("a" -> 1, "b" -> "toto", "c" -> true, "d" -> null)
-        assert(decode(json)(using schemaDecoder(using schema)))(equalTo(Right(value))) &&
-        assert(schemaEncoder(using schema).apply(value).noSpaces)(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
+        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
       }
     )
   )

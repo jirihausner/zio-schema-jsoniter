@@ -16,7 +16,7 @@ object JsoniterCodecSpec extends ZIOSpecDefault with EncoderSpecs with DecoderSp
     JsoniterCodec.Config(ignoreEmptyCollections = true)
   override protected def KeepNullsAndEmptyColleciontsConfig: Config =
     JsoniterCodec.Config(ignoreEmptyCollections = false, ignoreNullValues = false)
-  override protected def StreamingConfig: JsoniterCodec.Config         =
+  override protected def StreamingConfig: JsoniterCodec.Config      =
     JsoniterCodec.Config(ignoreEmptyCollections = false, treatStreamsAsArrays = true)
 
   override protected def BinaryCodec[A]: (Schema[A], Config) => codec.BinaryCodec[A] =

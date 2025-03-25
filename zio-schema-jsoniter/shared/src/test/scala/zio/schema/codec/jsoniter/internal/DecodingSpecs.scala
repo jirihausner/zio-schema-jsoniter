@@ -477,7 +477,7 @@ private[jsoniter] trait DecoderSpecs {
         }
       },
       test("of absent primitive") {
-        assertDecodes(Schema.Optional(Schema.Primitive(StandardType.StringType)), "null", None)
+        assertDecodes(Schema.Optional(Schema.Primitive(StandardType.StringType)), "null", None, debug = true)
       },
       test("of some complex value") {
         check(genValue) { value =>
@@ -485,11 +485,12 @@ private[jsoniter] trait DecoderSpecs {
             Schema.Optional(Value.schema),
             s"""{"first":${value.first},"second":${value.second}}""",
             Some(value),
+            debug = true,
           )
         }
       },
       test("of absent complex value") {
-        assertDecodes(Schema.Optional(Value.schema), "null", None)
+        assertDecodes(Schema.Optional(Value.schema), "null", None, debug = true)
       },
     ),
     suite("fail")(
@@ -669,12 +670,12 @@ private[jsoniter] trait DecoderSpecs {
         assertDecodesToError(
           PersonWithRejectExtraFields.schema,
           """{"name":"test","age":10,"extraField":10}""",
-          "extra field \"extraField\"",
+          "extra field extraField",
         ) &>
           assertDecodesToError(
             schemaObject.annotate(rejectExtraFields()),
             """{"extraField":10}""",
-            "extra field \"extraField\"",
+            "extra field extraField",
           )
       },
       test("transient field annotation") {
@@ -817,21 +818,21 @@ private[jsoniter] trait DecoderSpecs {
           assertDecodesToError(
             BigProduct.schema,
             """{}""",
-            "missing field \"f00\"",
+            "missing field f00",
           )
         },
         test("rejects extra fields") {
           assertDecodesToError(
             BigProduct.schema.annotate(rejectExtraFields()),
             """{"f00":true,"extraField":10}""",
-            "extra field \"extraField\"",
+            "extra field extraField",
           )
         },
         test("rejects duplicated fields") {
           assertDecodesToError(
             BigProduct.schema,
             """{"f00":true,"f01":10,"f-01":8}""",
-            "duplicate field \"f01\"",
+            "duplicate field f01",
           )
         },
         test("decodes field name with alias - id") {
@@ -919,14 +920,14 @@ private[jsoniter] trait DecoderSpecs {
           assertDecodesToError(
             Subscription.schema,
             """{"amount":1000,"type":123}""",
-            "unrecognized subtype \"123\"",
+            "unrecognized subtype 123",
           )
         },
         test("case name - missing discriminator field") {
           assertDecodesToError(
             Subscription.schema,
             """{"amount":1000}""",
-            "missing subtype \"type\"",
+            "missing subtype type",
           )
         },
         test("case name - empty fields") {
@@ -946,7 +947,7 @@ private[jsoniter] trait DecoderSpecs {
               assertDecodesToError(
                 Schema[BigEnum3],
                 """{"type":"Case00"}""",
-                "unrecognized subtype \"Case00\"",
+                "unrecognized subtype Case00",
               )
           },
           test("with caseAliases") {
@@ -957,14 +958,14 @@ private[jsoniter] trait DecoderSpecs {
             )
           },
           test("fails on missing discriminator field") {
-            assertDecodesToError(Schema[BigEnum3], """{"b":123}""", "missing subtype \"type\"") &>
-              assertDecodesToError(Schema[BigEnum3], """{}""", "missing subtype \"type\"")
+            assertDecodesToError(Schema[BigEnum3], """{"b":123}""", "missing subtype type") &>
+              assertDecodesToError(Schema[BigEnum3], """{}""", "missing subtype type")
           },
           test("fails on invalid case") {
             assertDecodesToError(
               Schema[BigEnum3],
               """{"type":"CaseXX"}""",
-              "unrecognized subtype \"type\"",
+              "unrecognized subtype type",
             )
           },
         ),
@@ -988,7 +989,7 @@ private[jsoniter] trait DecoderSpecs {
           assertDecodesToError(
             PaymentMethod.schema,
             """{"cash":{}}""",
-            "unrecognized subtype \"cash\"",
+            "unrecognized subtype cash",
           )
         },
         suite("of case classes and case objects with more than 64 cases")(
@@ -1001,7 +1002,7 @@ private[jsoniter] trait DecoderSpecs {
               assertDecodesToError(
                 Schema[BigEnum2],
                 """{"Case00":{}}""",
-                "unrecognized subtype \"Case00\"",
+                "unrecognized subtype Case00",
               )
           },
           test("with caseAliases") {
@@ -1018,7 +1019,7 @@ private[jsoniter] trait DecoderSpecs {
             assertDecodesToError(
               Schema[BigEnum2],
               """{"CaseXX":{}}""",
-              "unrecognized subtype \"CaseXX\"",
+              "unrecognized subtype CaseXX",
             )
           },
         ),
@@ -1070,7 +1071,7 @@ private[jsoniter] trait DecoderSpecs {
             TypeId.Structural,
             ListMap(
               "foo" -> DynamicValue.Primitive("s", StandardType.StringType),
-              "bar" -> DynamicValue.Primitive(1L, StandardType.LongType),
+              "bar" -> DynamicValue.Primitive(java.math.BigDecimal.valueOf(1L), StandardType.BigDecimalType),
             ),
           ),
         )
@@ -1173,9 +1174,9 @@ private[jsoniter] trait DecoderSpecs {
         test("decodes a stream with multiple records separated by newlines") {
           assertDecodesMany(
             Person.schema,
-            """{"name":"Alice","age":1}
-              |{"name":"Bob","age":2}
-              |{"name":"Charlie","age":3}""".stripMargin,
+            """|{"name":"Alice","age":1}
+               |{"name":"Bob","age":2}
+               |{"name":"Charlie","age":3}""".stripMargin,
             Chunk(
               Person("Alice", 1),
               Person("Bob", 2),
@@ -1186,9 +1187,9 @@ private[jsoniter] trait DecoderSpecs {
         test("decodes a stream with multiple records, not separated with internal newlines") {
           assertDecodesMany(
             Person.schema,
-            """{"name":"Alice","age":1}{"name":"Bob",
-              |"age"
-              |:2}{"name":"Charlie","age":3}""".stripMargin,
+            """|{"name":"Alice","age":1}{"name":"Bob",
+               |"age"
+               |:2}{"name":"Charlie","age":3}""".stripMargin,
             Chunk(
               Person("Alice", 1),
               Person("Bob", 2),
@@ -1199,9 +1200,9 @@ private[jsoniter] trait DecoderSpecs {
         test("decodes a stream with multiple records formatted as an array") {
           assertDecodesMany(
             Person.schema,
-            """[{"name":"Alice","age":1},   {"name":"Bob","age":2},
-              |{"name":"Charlie","age"
-              |: 3}]""".stripMargin,
+            """|[{"name":"Alice","age":1},   {"name":"Bob","age":2},
+               |{"name":"Charlie","age"
+               |: 3}]""".stripMargin,
             Chunk(
               Person("Alice", 1),
               Person("Bob", 2),
