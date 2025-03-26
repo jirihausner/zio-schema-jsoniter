@@ -44,16 +44,20 @@ private[jsoniter] trait Codecs {
       out.writeArrayEnd()
     }
 
-  def decodeChunk[A](default: A)(implicit decoder: Decoder[A]): Decoder[Chunk[A]] =
+  def decodeChunk[A](implicit decoder: Decoder[A]): Decoder[Chunk[A]] =
     (in: JsonReader, _: Chunk[A]) => {
-      if (in.nextToken() != '[') in.decodeError("expected '['")
-      val builder = ChunkBuilder.make[A](8)
-      while ({
-        builder += decoder(in, default)
-        in.isNextToken(',')
-      }) ()
-      if (in.isCurrentToken(']')) builder.result()
-      else in.arrayEndOrCommaError()
+      if (!in.isNextToken('[')) in.decodeError("expected '['")
+      if (in.isNextToken(']')) Chunk.empty[A]
+      else {
+        in.rollbackToken()
+        val builder = ChunkBuilder.make[A](8)
+        while ({
+          builder += decoder(in, null.asInstanceOf[A])
+          in.isNextToken(',')
+        }) ()
+        if (in.isCurrentToken(']')) builder.result()
+        else in.arrayEndOrCommaError()
+      }
     }
 
   def encodePrimitive[A](standardType: StandardType[A]): Encoder[A] = standardType match {
@@ -110,38 +114,34 @@ private[jsoniter] trait Codecs {
     case StandardType.DoubleType         => (in, _) => in.readDouble()
     case StandardType.BinaryType         =>
       new Decoder[Chunk[Byte]] {
-        val decoder      = decodePrimitive(StandardType[Byte])
-        val defaultValue = StandardType.BinaryType.defaultValue.getOrElse(null).asInstanceOf[Byte]
+        val decoder = decodePrimitive(StandardType[Byte])
 
         def apply(in: JsonReader, default: Chunk[Byte]): Chunk[Byte] =
-          decodeChunk[Byte](defaultValue)(decoder)(in, default)
+          decodeChunk[Byte](decoder)(in, null)
       }
     case StandardType.CharType           => (in, _) => in.readChar()
-    case StandardType.BigIntegerType     =>
-      (in, default) => in.readBigInt(BigInt(default)).underlying
-    case StandardType.BigDecimalType     =>
-      (in, default) => in.readBigDecimal(BigDecimal(default)).underlying
-    case StandardType.UUIDType           => (in, default) => in.readUUID(default)
+    case StandardType.BigIntegerType     => (in, _) => in.readBigInt(null).underlying
+    case StandardType.BigDecimalType     => (in, _) => in.readBigDecimal(null).underlying
+    case StandardType.UUIDType           => (in, _) => in.readUUID(null)
     case StandardType.DayOfWeekType      =>
-      (in, default) => java.time.DayOfWeek.valueOf(in.readString(default.toString))
-    case StandardType.DurationType       => (in, default) => in.readDuration(default)
-    case StandardType.InstantType        => (in, default) => in.readInstant(default)
-    case StandardType.LocalDateType      => (in, default) => in.readLocalDate(default)
-    case StandardType.LocalDateTimeType  => (in, default) => in.readLocalDateTime(default)
-    case StandardType.LocalTimeType      => (in, default) => in.readLocalTime(default)
-    case StandardType.MonthType          =>
-      (in, default) => java.time.Month.valueOf(in.readString(default.toString))
-    case StandardType.MonthDayType       => (in, default) => in.readMonthDay(default)
-    case StandardType.OffsetDateTimeType => (in, default) => in.readOffsetDateTime(default)
-    case StandardType.OffsetTimeType     => (in, default) => in.readOffsetTime(default)
-    case StandardType.PeriodType         => (in, default) => in.readPeriod(default)
-    case StandardType.YearType           => (in, default) => in.readYear(default)
-    case StandardType.YearMonthType      => (in, default) => in.readYearMonth(default)
-    case StandardType.ZonedDateTimeType  => (in, default) => in.readZonedDateTime(default)
-    case StandardType.ZoneIdType         => (in, default) => in.readZoneId(default)
-    case StandardType.ZoneOffsetType     => (in, default) => in.readZoneOffset(default)
+      (in, _) => java.time.DayOfWeek.valueOf(in.readString(null))
+    case StandardType.DurationType       => (in, _) => in.readDuration(null)
+    case StandardType.InstantType        => (in, _) => in.readInstant(null)
+    case StandardType.LocalDateType      => (in, _) => in.readLocalDate(null)
+    case StandardType.LocalDateTimeType  => (in, _) => in.readLocalDateTime(null)
+    case StandardType.LocalTimeType      => (in, _) => in.readLocalTime(null)
+    case StandardType.MonthType          => (in, _) => java.time.Month.valueOf(in.readString(null))
+    case StandardType.MonthDayType       => (in, _) => in.readMonthDay(null)
+    case StandardType.OffsetDateTimeType => (in, _) => in.readOffsetDateTime(null)
+    case StandardType.OffsetTimeType     => (in, _) => in.readOffsetTime(null)
+    case StandardType.PeriodType         => (in, _) => in.readPeriod(null)
+    case StandardType.YearType           => (in, _) => in.readYear(null)
+    case StandardType.YearMonthType      => (in, _) => in.readYearMonth(null)
+    case StandardType.ZonedDateTimeType  => (in, _) => in.readZonedDateTime(null)
+    case StandardType.ZoneIdType         => (in, _) => in.readZoneId(null)
+    case StandardType.ZoneOffsetType     => (in, _) => in.readZoneOffset(null)
     case StandardType.CurrencyType       =>
-      (in, default) => java.util.Currency.getInstance(in.readString(default.getCurrencyCode()))
+      (in, _) => java.util.Currency.getInstance(in.readString(null))
   }
 
   private case class EncoderKey[A](
@@ -266,7 +266,7 @@ private[jsoniter] trait Codecs {
       new Decoder[A] {
         val readLazy = () => decodeSchema(s.schema, discriminator)
 
-        def apply(in: JsonReader, default: A): A = readLazy()(in, default)
+        def apply(in: JsonReader, default: A): A = readLazy()(in, null.asInstanceOf[A])
       }
     case s: Schema.GenericRecord                                             => decodeRecord(s, discriminator)
     case s @ Schema.CaseClass0(_, _, _)                                      => decodeCaseClass0(s, discriminator)
@@ -321,17 +321,38 @@ private[jsoniter] trait Codecs {
       }
     }
 
-  def decodeOption[A](schema: Schema[A]): Decoder[Option[A]] =
-    new Decoder[Option[A]] {
-      val readValue = decodeSchema(schema)
+  def decodeOption[A](schema: Schema[A]): Decoder[Option[A]] = {
+    if (schema.isInstanceOf[Schema.Record[_]] || schema.isInstanceOf[Schema.Enum[_]]) {
+      new Decoder[Option[A]] {
+        val readValue = decodeSchema(schema)
 
-      def apply(in: JsonReader, default: Option[A]): Option[A] = in.nextToken() match {
-        case '"' =>
-          in.rollbackToken()
-          Some(readValue(in, null.asInstanceOf[A]))
-        case _   => in.readNullOrError(None, "expected null")
+        def apply(in: JsonReader, default: Option[A]): Option[A] = in.nextToken() match {
+          case 'n' => in.readNullOrError(None, "expected null")
+          case '{' =>
+            if (!in.isNextToken('}')) {
+              in.rollbackToken()
+              in.rollbackToken()
+              Some(readValue(in, null.asInstanceOf[A]))
+            } else None
+          case _   =>
+            in.rollbackToken()
+            Some(readValue(in, null.asInstanceOf[A]))
+        }
       }
+    } else {
+      new Decoder[Option[A]] {
+        val readValue = decodeSchema(schema)
+
+        def apply(in: JsonReader, default: Option[A]): Option[A] = in.nextToken() match {
+          case 'n' => in.readNullOrError(None, "expected null")
+          case _   =>
+            in.rollbackToken()
+            Some(readValue(in, null.asInstanceOf[A]))
+        }
+      }
+
     }
+  }
 
   def encodeTuple[A, B](left: Schema[A], right: Schema[B], config: JsoniterCodec.Config): Encoder[(A, B)] =
     new Encoder[(A, B)] {
@@ -352,10 +373,11 @@ private[jsoniter] trait Codecs {
       val readRight = decodeSchema(right)
 
       def apply(in: JsonReader, default: (A, B)): (A, B) = {
-        if (in.nextToken() != '[') in.decodeError("expected '['")
+        if (!in.isNextToken('[')) in.decodeError("expected '['")
         val a = readLeft(in, default._1)
+        if (!in.isNextToken(',')) in.commaError()
         val b = readRight(in, default._2)
-        if (in.nextToken() != ']') in.arrayEndOrCommaError()
+        if (!in.isNextToken(']')) in.decodeError("expected ']'")
         else (a, b)
       }
     }
@@ -400,20 +422,18 @@ private[jsoniter] trait Codecs {
 
   def decodeSeq[Col, Elm](schema: Schema.Sequence[Col, Elm, _]): Decoder[Col] =
     new Decoder[Col] {
-      val defaultValue = schema.elementSchema.defaultValue.getOrElse(null.asInstanceOf[Elm])
-      val readChunk    = decodeChunk(defaultValue)(decodeSchema(schema.elementSchema))
+      val readChunk = decodeChunk(decodeSchema(schema.elementSchema))
 
       def apply(in: JsonReader, default: Col): Col =
-        schema.fromChunk(readChunk(in, schema.toChunk(default)))
+        schema.fromChunk(readChunk(in, null))
     }
 
   def decodeNonEmptySeq[Col, Elm](schema: Schema.NonEmptySequence[Col, Elm, _]): Decoder[Col] =
     new Decoder[Col] {
-      val defaultValue = schema.elementSchema.defaultValue.getOrElse(null.asInstanceOf[Elm])
-      val readChunk    = decodeChunk(defaultValue)(decodeSchema(schema.elementSchema))
+      val readChunk = decodeChunk(decodeSchema(schema.elementSchema))
 
       def apply(in: JsonReader, default: Col): Col =
-        try schema.fromChunk(readChunk(in, schema.toChunk(default)))
+        try schema.fromChunk(readChunk(in, null))
         catch { case ex if NonFatal(ex) => in.decodeError(ex.getMessage) }
     }
 
@@ -452,19 +472,17 @@ private[jsoniter] trait Codecs {
             kvs.put(readKey(in), readValue(in, defaultValue))
             in.isNextToken(',')
           }) ()
-          if (in.nextToken() != '}') in.decodeError("expected '}'")
+          if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
           import scala.jdk.CollectionConverters._
           kvs.asScala.toMap
         }
       }
     case None          =>
       new Decoder[Map[K, V]] {
-        val defaultKey   = ks.defaultValue.getOrElse(null.asInstanceOf[K])
-        val defaultValue = vs.defaultValue.getOrElse(null.asInstanceOf[V])
-        val decoder      = decodeTuple(ks, vs)
+        val decoder = decodeTuple(ks, vs)
 
         def apply(in: JsonReader, default: Map[K, V]): Map[K, V] =
-          decodeChunk((defaultKey, defaultValue))(decoder)(in, Chunk.fromIterable(default)).toMap
+          decodeChunk(decoder)(in, null).toMap
       }
   }
 
@@ -481,7 +499,7 @@ private[jsoniter] trait Codecs {
       val readMap = decodeMap(ks, vs)
 
       def apply(in: JsonReader, default: NonEmptyMap[K, V]): NonEmptyMap[K, V] =
-        NonEmptyMap.fromMapOption(readMap(in, default)) match {
+        NonEmptyMap.fromMapOption(readMap(in, null)) match {
           case Some(value) => value
           case None        => in.decodeError("NonEmptyMap cannot be empty")
         }
@@ -489,11 +507,10 @@ private[jsoniter] trait Codecs {
 
   def decodeSet[A](schema: Schema.Set[A]): Decoder[Set[A]] =
     new Decoder[Set[A]] {
-      val defaultValue = schema.elementSchema.defaultValue.getOrElse(null.asInstanceOf[A])
-      val readChunk    = decodeChunk(defaultValue)(decodeSchema(schema.elementSchema))
+      val readChunk = decodeChunk(decodeSchema(schema.elementSchema))
 
       def apply(in: JsonReader, default: Set[A]): Set[A] =
-        schema.fromChunk(readChunk(in, schema.toChunk(default)))
+        schema.fromChunk(readChunk(in, null))
     }
 
   def decodeTransform[A, B](schema: Schema.Transform[A, B, _], discriminator: Option[String]): Decoder[B] =
@@ -502,10 +519,7 @@ private[jsoniter] trait Codecs {
         decodeSchema(schema.annotations.foldLeft(schema.schema)((s, a) => s.annotate(a)), discriminator)
 
       def apply(in: JsonReader, default: B): B = {
-        (for {
-          defaultValue <- schema.g(default)
-          result       <- schema.f(readValue(in, defaultValue))
-        } yield result) match {
+        schema.f(readValue(in, null.asInstanceOf[A])) match {
           case Left(reason) => in.decodeError(reason)
           case Right(value) => value
         }
@@ -529,18 +543,16 @@ private[jsoniter] trait Codecs {
 
   def decodeEither[A, B](left: Schema[A], right: Schema[B]): Decoder[Either[A, B]] =
     new Decoder[Either[A, B]] {
-      val readLeft     = decodeSchema(left)
-      val readRight    = decodeSchema(right)
-      val leftDefault  = left.defaultValue.getOrElse(null.asInstanceOf[A])
-      val rightDefault = right.defaultValue.getOrElse(null.asInstanceOf[B])
+      val readLeft  = decodeSchema(left)
+      val readRight = decodeSchema(right)
 
       def apply(in: JsonReader, default: Either[A, B]): Either[A, B] = {
-        if (in.nextToken() != '{') in.decodeError("expected '{'")
+        if (!in.isNextToken('{')) in.decodeError("expected '{'")
         val result = in.readKeyAsString() match {
-          case "Left"  => Left(readLeft(in, leftDefault))
-          case "Right" => Right(readRight(in, rightDefault))
+          case "Left"  => Left(readLeft(in, null.asInstanceOf[A]))
+          case "Right" => Right(readRight(in, null.asInstanceOf[B]))
         }
-        if (in.nextToken() != '}') in.decodeError("expected '{'")
+        if (!in.isNextToken('}')) in.decodeError("expected '}'")
         result
       }
     }
@@ -560,25 +572,38 @@ private[jsoniter] trait Codecs {
 
   def decodeFallback[A, B](left: Schema[A], right: Schema[B], fullDecode: Boolean): Decoder[Fallback[A, B]] =
     new Decoder[Fallback[A, B]] {
-      val readLeft     = decodeSchema(left)
-      val readRight    = decodeSchema(right)
-      val leftDefault  = left.defaultValue.getOrElse(null.asInstanceOf[A])
-      val rightDefault = right.defaultValue.getOrElse(null.asInstanceOf[B])
+      val readLeft  = decodeSchema(left)
+      val readRight = decodeSchema(right)
 
       def apply(in: JsonReader, default: Fallback[A, B]): Fallback[A, B] = {
         var left: Option[A]  = None
         var right: Option[B] = None
+
         if (in.isNextToken('[')) { // it's both
-          left = Some(readLeft(in, leftDefault))
-          if (fullDecode) right = Some(readRight(in, rightDefault))
-          if (in.nextToken() != ']') in.decodeError("expected ']'")
+          try left = Some(readLeft(in, null.asInstanceOf[A]))
+          catch {
+            case ex if NonFatal(ex) =>
+              in.rollbackToken()
+              in.skip()
+          }
+          if (!in.isNextToken(',')) in.commaError()
+          if (fullDecode) {
+            try right = Some(readRight(in, null.asInstanceOf[B]))
+            catch {
+              case ex if NonFatal(ex) =>
+                in.rollbackToken()
+                in.skip()
+            }
+          }
+          if (!in.isNextToken(']')) in.decodeError("expected ']'")
         } else { // it's either left or right
+          in.rollbackToken()
           in.setMark()
-          try left = Some(readLeft(in, leftDefault))
+          try left = Some(readLeft(in, null.asInstanceOf[A]))
           catch {
             case _: Throwable =>
               in.rollbackToMark()
-              right = Some(readRight(in, rightDefault))
+              right = Some(readRight(in, null.asInstanceOf[B]))
           }
         }
 
@@ -681,11 +706,9 @@ private[jsoniter] trait Codecs {
       val rejectAdditionalFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
 
       def apply(in: JsonReader, default: ListMap[String, Any]): ListMap[String, Any] = {
-        var continue = true
-        if (discriminator eq None) {
-          if (in.nextToken() != '{') in.decodeError("expected '{'")
-          continue = !in.isNextToken('}')
-        }
+        if (!in.isNextToken('{')) in.decodeError("expected '{'")
+        var continue = !in.isNextToken('}')
+        if (continue) in.rollbackToken()
         val map      = new java.util.HashMap[String, Any](fields.length << 1)
         while (continue) {
           val fieldNameOrAlias = in.readKeyAsString()
@@ -694,11 +717,12 @@ private[jsoniter] trait Codecs {
             val (fieldName, readValue) = fieldWithReader
             val prev                   = map.put(fieldName, readValue(in, null.asInstanceOf[Any]))
             if (prev != null) in.decodeError(s"duplicate field $fieldNameOrAlias")
-          } else if (rejectAdditionalFields || discriminator.contains(fieldNameOrAlias)) {
+          } else if (!rejectAdditionalFields || discriminator.contains(fieldNameOrAlias)) {
             in.skip()
           } else in.decodeError(s"extra field $fieldNameOrAlias")
-          continue = !in.isNextToken('}')
+          continue = in.isNextToken(',')
         }
+        if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
         var idx      = 0
         while (idx < fields.length) {
           val field     = fields(idx)
@@ -719,7 +743,7 @@ private[jsoniter] trait Codecs {
                     case _: Schema.Optional[_]               => None
                     case collection: Schema.Collection[_, _] => collection.empty
                     case _                                   =>
-                      in.decodeError(s"missing key ${fieldWithReaders.get(fieldName)._1}")
+                      in.decodeError(s"missing field ${fieldWithReaders.get(fieldName)._1}")
                   }
                 }
               },
@@ -783,18 +807,18 @@ private[jsoniter] trait Codecs {
   def decodeCaseClass0[Z](schema: Schema.CaseClass0[Z], discriminator: Option[String]): Decoder[Z] = new Decoder[Z] {
 
     val rejectExtraFields = schema.annotations.collectFirst { case _: rejectExtraFields => () }.isDefined
-    val noDiscriminator   = discriminator.isEmpty
 
     def apply(in: JsonReader, default: Z): Z = {
-      if (noDiscriminator && in.nextToken() != '{')
-        in.decodeError("expected '{'")
+      if (!in.isNextToken('{')) in.decodeError("expected '{'")
       var continue = !in.isNextToken('}')
+      if (continue) in.rollbackToken()
       while (continue) {
         val field = in.readKeyAsString()
         if (rejectExtraFields) in.decodeError(s"extra field $field")
         in.skip()
-        continue = !in.isNextToken('}')
+        continue = in.isNextToken(',')
       }
+      if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
       schema.defaultConstruct()
     }
   }
@@ -1108,14 +1132,11 @@ private[jsoniter] trait Codecs {
     }
 
     val rejectExtraFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
-    val noDiscriminator   = discriminator.isEmpty
 
     def apply(in: JsonReader, default: Array[Any]): Array[Any] = {
-      var continue = true
-      if (noDiscriminator) {
-        if (in.nextToken() != '{') in.decodeError("expected '{'")
-        continue = !in.isNextToken('}')
-      }
+      if (!in.isNextToken('{')) in.decodeError("expected '{'")
+      var continue = !in.isNextToken('}')
+      if (continue) in.rollbackToken()
       val len      = fields.length
       val buffer   = new Array[Any](len)
       while (continue) {
@@ -1127,8 +1148,9 @@ private[jsoniter] trait Codecs {
           else in.decodeError(s"duplicate field $key")
         } else if (!rejectExtraFields) in.skip()
         else in.decodeError(s"extra field $key")
-        continue = !in.isNextToken('}')
+        continue = in.isNextToken(',')
       }
+      if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
       var idx      = 0
       while (idx < len) {
         if (buffer(idx) == null) {
@@ -1257,7 +1279,7 @@ private[jsoniter] trait Codecs {
           val it = decoders.iterator
           while (it.hasNext) {
             in.setMark()
-            try return it.next()(in, default).asInstanceOf[Z]
+            try return it.next()(in, null).asInstanceOf[Z]
             catch { case ex if NonFatal(ex) => in.rollbackToMark() }
           }
           in.decodeError("none of the subtypes could decode the data")
@@ -1276,11 +1298,12 @@ private[jsoniter] trait Codecs {
             def apply(in: JsonReader, default: Z): Z = {
               if (in.nextToken() != '{') in.decodeError("expected '{'")
               if (in.isNextToken('}')) in.decodeError("missing subtype")
+              in.rollbackToken()
               val key     = in.readKeyAsString()
               val decoder = decoders.getOrDefault(key, null)
               if (decoder eq null) in.decodeError(s"unrecognized subtype $key")
               val decoded = decoder(in, null).asInstanceOf[Z]
-              if (in.nextToken() != '}') in.decodeError("expecetd '}'")
+              if (in.nextToken() != '}') in.decodeError("expected '}'")
               decoded
             }
           }
@@ -1294,12 +1317,17 @@ private[jsoniter] trait Codecs {
             def apply(in: JsonReader, default: Z): Z = {
               in.setMark()
               if (in.nextToken() != '{') in.decodeError("expected '{'")
-              if (in.isNextToken('}')) in.decodeError("missing subtype")
+              if (in.nextToken() == '}') in.decodeError(s"missing subtype $name")
+              in.rollbackToken()
               while ({
-                val continue = in.readKeyAsString() != name
-                if (continue) in.skip()
-                if (in.isNextToken('}')) in.decodeError("missing subtype")
-                continue
+                if (in.readKeyAsString() != name) {
+                  in.skip()
+                  in.nextToken() match {
+                    case '}' => in.decodeError(s"missing subtype $name")
+                    case ',' => true
+                    case _   => in.commaError()
+                  }
+                } else false
               }) ()
               val subtype = in.readString(null)
               in.rollbackToMark()
@@ -1379,7 +1407,7 @@ private[jsoniter] trait Codecs {
               var i  = 0
               while ({
                 if (i == vs.length) vs = java.util.Arrays.copyOf(vs, i << 1)
-                vs(i) = directDecoder(in, default)
+                vs(i) = directDecoder(in, null)
                 i += 1
                 in.isNextToken(',')
               }) ()
@@ -1396,7 +1424,7 @@ private[jsoniter] trait Codecs {
               in.rollbackToken()
               val kvs = new java.util.LinkedHashMap[String, DynamicValue](8)
               while ({
-                kvs.put(in.readKeyAsString(), directDecoder(in, default))
+                kvs.put(in.readKeyAsString(), directDecoder(in, null))
                 in.isNextToken(',')
               }) ()
               if (in.isCurrentToken('}')) {

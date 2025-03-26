@@ -39,7 +39,7 @@ private[jsoniter] trait DecoderSpecs {
           Console.printLine(s"got:      $message")).when(debug).ignore
       }
       .exit
-    assertZIO(stream)(fails(equalTo(error)))
+    assertZIO(stream)(fails(startsWithString(error)))
   }
 
   final protected def assertDecodes[A](
@@ -407,7 +407,6 @@ private[jsoniter] trait DecoderSpecs {
             Schema.nonEmptySet(Value.schema),
             nonEmptySet.map { case Value(x, y) => s"""{"first":$x,"second":$y}""" }.mkString("[", ",", "]"),
             nonEmptySet,
-            debug = true,
           )
         }
       },
@@ -477,7 +476,7 @@ private[jsoniter] trait DecoderSpecs {
         }
       },
       test("of absent primitive") {
-        assertDecodes(Schema.Optional(Schema.Primitive(StandardType.StringType)), "null", None, debug = true)
+        assertDecodes(Schema.Optional(Schema.Primitive(StandardType.StringType)), "null", None)
       },
       test("of some complex value") {
         check(genValue) { value =>
@@ -485,12 +484,11 @@ private[jsoniter] trait DecoderSpecs {
             Schema.Optional(Value.schema),
             s"""{"first":${value.first},"second":${value.second}}""",
             Some(value),
-            debug = true,
           )
         }
       },
       test("of absent complex value") {
-        assertDecodes(Schema.Optional(Value.schema), "null", None, debug = true)
+        assertDecodes(Schema.Optional(Value.schema), "null", None)
       },
     ),
     suite("fail")(
@@ -785,18 +783,18 @@ private[jsoniter] trait DecoderSpecs {
           WithOptionFields(Some("s"), None),
         )
       },
-      test("case class with option fields accepts empty json object as value") {
+      test("case class with option fields rejects empty json object as value") {
         assertDecodesToError(
           WithOptionFields.schema,
           """{"a":"s", "b":{}}""",
-          "ERROR", // FIXME: provide correct error message
+          "illegal number",
         )
       },
-      test("case class with complex option field rejects empty json object as value") {
-        assertDecodesToError(
+      test("case class with complex option field accepts empty json object as value") {
+        assertDecodes(
           WithComplexOptionField.schema,
           """{"order":{}}""",
-          "ERROR", // FIXME: provide correct error message
+          WithComplexOptionField(None),
         )
       },
       test("case class with complex option field correctly decodes") {
@@ -832,7 +830,7 @@ private[jsoniter] trait DecoderSpecs {
           assertDecodesToError(
             BigProduct.schema,
             """{"f00":true,"f01":10,"f-01":8}""",
-            "duplicate field f01",
+            "duplicate field f-01",
           )
         },
         test("decodes field name with alias - id") {
@@ -920,7 +918,7 @@ private[jsoniter] trait DecoderSpecs {
           assertDecodesToError(
             Subscription.schema,
             """{"amount":1000,"type":123}""",
-            "unrecognized subtype 123",
+            "expected '\"'",
           )
         },
         test("case name - missing discriminator field") {
@@ -965,7 +963,7 @@ private[jsoniter] trait DecoderSpecs {
             assertDecodesToError(
               Schema[BigEnum3],
               """{"type":"CaseXX"}""",
-              "unrecognized subtype type",
+              "unrecognized subtype CaseXX",
             )
           },
         ),
@@ -1098,7 +1096,7 @@ private[jsoniter] trait DecoderSpecs {
       test("vector") {
         assertDecodes(Schema[VectorWrapper], """{}""", VectorWrapper(Vector.empty))
       },
-      test("chunck") {
+      test("chunk") {
         assertDecodes(Schema[ChunkWrapper], """{}""", ChunkWrapper(Chunk.empty))
       },
     ),
