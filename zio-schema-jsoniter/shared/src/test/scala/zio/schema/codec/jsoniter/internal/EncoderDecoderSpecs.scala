@@ -74,7 +74,10 @@ private[jsoniter] trait EncoderDecoderSpecs {
           .via(BinaryCodec[A2](decodingSchema, config).streamDecoder)
           .runCollect
           .tapError { err =>
-            Console.printLineError(s"Decoding failed for input ${new String(encoded.toArray)}\nError Message: $err")
+            Console
+              .printLine(s"Decoding failed for input ${new String(encoded.toArray)}\nError Message: $err")
+              .when(debug)
+              .ignore
           }
       }
       .map(_.toList)

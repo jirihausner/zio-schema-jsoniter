@@ -621,11 +621,11 @@ private[jsoniter] trait EncoderSpecs {
           "{}",
         )
       },
-      test("record with option fields encoded as null") {
+      test("record with option fields omitted when empty") {
         assertEncodes(
           recordWithOptionSchema,
           ListMap[String, Any]("foo" -> Some("s"), "bar" -> None),
-          """{"foo":"s","bar":null}""",
+          """{"foo":"s"}""",
         )
       },
       test("case class with option fields omitted when empty") {

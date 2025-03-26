@@ -30,10 +30,6 @@ private[jsoniter] trait Codecs {
     override def nullValue: A                               = null.asInstanceOf[A]
   }
 
-  implicit class SchemaExt[A](schema: Schema[A]) {
-    def defaultValueOrNull: A = schema.defaultValue.getOrElse(null.asInstanceOf[A])
-  }
-
   type DiscriminatorTuple = Option[(String, String)]
 
   def encodeChunk[A](implicit encoder: Encoder[A]): Encoder[Chunk[A]] =
@@ -374,9 +370,9 @@ private[jsoniter] trait Codecs {
 
       def apply(in: JsonReader, default: (A, B)): (A, B) = {
         if (!in.isNextToken('[')) in.decodeError("expected '['")
-        val a = readLeft(in, default._1)
+        val a = readLeft(in, null.asInstanceOf[A])
         if (!in.isNextToken(',')) in.commaError()
-        val b = readRight(in, default._2)
+        val b = readRight(in, null.asInstanceOf[B])
         if (!in.isNextToken(']')) in.decodeError("expected ']'")
         else (a, b)
       }
@@ -462,19 +458,22 @@ private[jsoniter] trait Codecs {
   def decodeMap[K, V](ks: Schema[K], vs: Schema[V]): Decoder[Map[K, V]] = decodeField(ks) match {
     case Some(readKey) =>
       new Decoder[Map[K, V]] {
-        val defaultValue          = vs.defaultValue.getOrElse(null.asInstanceOf[V])
         val readValue: Decoder[V] = decodeSchema(vs)
 
         def apply(in: JsonReader, default: Map[K, V]): Map[K, V] = {
-          if (in.nextToken() != '{') in.decodeError("expected '{'")
-          val kvs = new java.util.LinkedHashMap[K, V](8)
-          while ({
-            kvs.put(readKey(in), readValue(in, defaultValue))
-            in.isNextToken(',')
-          }) ()
-          if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
-          import scala.jdk.CollectionConverters._
-          kvs.asScala.toMap
+          if (!in.isNextToken('{')) in.decodeError("expected '{'")
+          if (in.isNextToken('}')) Map.empty[K, V]
+          else {
+            in.rollbackToken()
+            val kvs = new java.util.LinkedHashMap[K, V](8)
+            while ({
+              kvs.put(readKey(in), readValue(in, null.asInstanceOf[V]))
+              in.isNextToken(',')
+            }) ()
+            if (!in.isCurrentToken('}')) in.decodeError("expected '}'")
+            import scala.jdk.CollectionConverters._
+            kvs.asScala.toMap
+          }
         }
       }
     case None          =>
@@ -647,7 +646,7 @@ private[jsoniter] trait Codecs {
           }
         }
 
-        def apply(value: ListMap[String, Any], out: JsonWriter): Unit = {
+        def apply(map: ListMap[String, Any], out: JsonWriter): Unit = {
           out.writeObjectStart()
           discriminatorTuple.foreach { case (tag, name) =>
             out.writeKey(tag)
@@ -655,28 +654,16 @@ private[jsoniter] trait Codecs {
           }
           var i = 0
           while (i < nonTransientFields.length) {
-            val field      = nonTransientFields(i)
-            val fieldName  = field.fieldName
-            val fieldValue = value(fieldName)
-            if (!isEmptyOptionalValue(field, fieldValue, config)) {
-              // FIXME: encode key and value only if value is not null if `config.ignoreNullValues` is true
-              // if (config.ignoreNullValues) {
-              //   val encoded = writeToStringReentrant(fieldValue)(fieldEncoders(i))
-              //   try
-              //     if (
-              //       encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(
-              //         3,
-              //       ) == 'l'
-              //     ) ()
-              //   catch {
-              //     case ex if NonFatal(ex) =>
-              //       out.writeKey(fieldName)
-              //       out.writeRawVal(encoded.getBytes())
-              //   }
-              // } else {
-              out.writeKey(fieldName)
-              fieldEncoders(i).encodeValue(fieldValue, out)
-              // }
+            val schema  = nonTransientFields(i)
+            val value   = map(schema.fieldName)
+            val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
+            val isNull  =
+              try
+                encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
+              catch { case ex if NonFatal(ex) => false }
+            if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
+              out.writeKey(schema.fieldName)
+              out.writeRawVal(encoded)
             }
             i += 1
           }
@@ -781,22 +768,15 @@ private[jsoniter] trait Codecs {
       var i = 0
       while (i < nonTransientFields.length) {
         val schema  = nonTransientFields(i)
-        val encoder = fieldEncoders(i)
         val value   = schema.get(z)
-        if (!isEmptyOptionalValue(schema, value, config)) {
-          // FIXME: encode key and value only if value is not null if `config.ignoreNullValues` is true
-          // if (config.ignoreNullValues) {
-          //   val encoded = writeToStringReentrant(value)(encoder)
-          //   try if (encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l') ()
-          //   catch {
-          //     case ex if NonFatal(ex) =>
-          //       out.writeKey(schema.fieldName)
-          //       out.writeRawVal(encoded.getBytes())
-          //   }
-          // } else {
+        val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
+        val isNull  =
+          try
+            encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
+          catch { case ex if NonFatal(ex) => false }
+        if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
           out.writeKey(schema.fieldName)
-          encoder.encodeValue(value, out)
-          // }
+          out.writeRawVal(encoded)
         }
         i += 1
       }

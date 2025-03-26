@@ -522,7 +522,7 @@ private[jsoniter] trait DecoderSpecs {
         assertDecodesToError(
           RecordExample.schema.annotate(rejectExtraFields()),
           """{"$f1":"test", "extraField":"extra"}""",
-          "Unexpected field: extraField",
+          "extra field extraField",
         )
       },
       test("optional field with schema or annotated default value") {
