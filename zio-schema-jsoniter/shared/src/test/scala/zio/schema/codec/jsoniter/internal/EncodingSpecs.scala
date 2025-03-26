@@ -85,16 +85,6 @@ private[jsoniter] trait EncoderSpecs {
     assertZIO(stream)(equalTo(charSequenceToByteChunk(json)))
   }
 
-  protected def testFloat: Spec[Any, Nothing] = test("Float") {
-    check(Gen.float) { float =>
-      assertEncodesNumericToPrecision(
-        Schema.Primitive(StandardType.FloatType),
-        float,
-        _.setScale(7, RoundingMode.HALF_UP),
-      )
-    }
-  }
-
   import PaymentMethod.{PayPal, WireTransfer}
   import Subscription.Recurring
 
@@ -136,7 +126,18 @@ private[jsoniter] trait EncoderSpecs {
           assertEncodes(Schema.Primitive(StandardType.LongType), long, long.toString)
         }
       },
-      testFloat,
+      test("Float") {
+        check(Gen.float) { float =>
+          assertEncodesNumericToPrecision(
+            Schema.Primitive(StandardType.FloatType),
+            float,
+            bd => {
+              if (TestPlatform.isJS) bd.setScale(5, RoundingMode.HALF_UP) // less accurate on JS
+              else bd.setScale(7, RoundingMode.HALF_UP)
+            },
+          )
+        }
+      },
       test("Double") {
         check(Gen.double) { double =>
           assertEncodesNumericToPrecision(

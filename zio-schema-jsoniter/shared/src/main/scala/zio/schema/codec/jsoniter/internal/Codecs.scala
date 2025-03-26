@@ -265,7 +265,7 @@ private[jsoniter] trait Codecs {
         def apply(in: JsonReader, default: A): A = readLazy()(in, null.asInstanceOf[A])
       }
     case s: Schema.GenericRecord                                             => decodeRecord(s, discriminator)
-    case s @ Schema.CaseClass0(_, _, _)                                      => decodeCaseClass0(s, discriminator)
+    case s @ Schema.CaseClass0(_, _, _)                                      => decodeCaseClass0(s)
     case s @ Schema.CaseClass1(_, _, _, _)                                   => decodeCaseClass1(s, discriminator)
     case s @ Schema.CaseClass2(_, _, _, _, _)                                => decodeCaseClass2(s, discriminator)
     case s @ Schema.CaseClass3(_, _, _, _, _, _)                             => decodeCaseClass3(s, discriminator)
@@ -784,7 +784,7 @@ private[jsoniter] trait Codecs {
     }
   }
 
-  def decodeCaseClass0[Z](schema: Schema.CaseClass0[Z], discriminator: Option[String]): Decoder[Z] = new Decoder[Z] {
+  def decodeCaseClass0[Z](schema: Schema.CaseClass0[Z]): Decoder[Z] = new Decoder[Z] {
 
     val rejectExtraFields = schema.annotations.collectFirst { case _: rejectExtraFields => () }.isDefined
 
