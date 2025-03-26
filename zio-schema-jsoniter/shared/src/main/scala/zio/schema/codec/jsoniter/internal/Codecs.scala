@@ -642,7 +642,7 @@ private[jsoniter] trait Codecs {
 
             @inline
             def encodeValue(x: Any, out: JsonWriter): Unit =
-              encodeSchema(field.schema.asInstanceOf[Schema[Any]], config, discriminatorTuple)(x, out)
+              encodeSchema(field.schema.asInstanceOf[Schema[Any]], config)(x, out)
           }
         }
 
@@ -754,8 +754,7 @@ private[jsoniter] trait Codecs {
       new EncodeOnlyJsonValueCodec[Any] {
 
         @inline
-        def encodeValue(x: Any, out: JsonWriter): Unit =
-          encodeSchema(field.schema, config, discriminatorTuple)(x, out)
+        def encodeValue(x: Any, out: JsonWriter): Unit = encodeSchema(field.schema, config)(x, out)
       }
     }
 

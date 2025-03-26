@@ -36,8 +36,8 @@ trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
       test("default value at last field") {
         val value = BaseB("a", Inner(1))
         val json = """{"type":"BaseB","a":"a","b":{"i":1}}"""
-        assert(readFromString(json)(using schemaCodec(using Schema[Base])))(equalTo(Right(value))) &&
-        assert(writeToString(value)(schemaCodec(using Schema[Base])))(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using Schema[Base])))(equalTo(value)) &&
+        assert(writeToString(value)(using schemaCodec(using Schema[Base])))(equalTo(json))
       }
     ),
     suite("union types")(
@@ -45,15 +45,15 @@ trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
         val schema = Schema.chunk(DeriveSchema.gen[Int | String | Boolean])
         val json = """["abc",1,true]"""
         val value = Chunk[Int | String | Boolean]("abc", 1, true)
-        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
-        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(value)) &&
+        assert(writeToString(value)(using schemaCodec(using schema)))(equalTo(json))
       },
       test("union type of enums") {
         val schema = Schema.chunk(Schema[Result])
         val json = """[{"res":{"Left":"Err1"}},{"res":{"Left":"Err21"}},{"res":{"Right":{"i":1}}}]"""
         val value = Chunk[Result](Result(Left(ErrorGroup1.Err1)), Result(Left(ErrorGroup2.Err21)), Result(Right(Value(1))))
-        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
-        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(value)) &&
+        assert(writeToString(value)(using schemaCodec(using schema)))(equalTo(json))
       },
       test("union type of custom types") {
         import UnionValue.given
@@ -61,8 +61,8 @@ trait VersionSpecificCodecSpec extends ZIOSpecDefault  {
         val schema = Schema.map(Schema[String], Schema[UnionValue])
         val json = """{"a":1,"b":"toto","c":true,"d":null}"""
         val value = Map("a" -> 1, "b" -> "toto", "c" -> true, "d" -> null)
-        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(Right(value))) &&
-        assert(writeToString(value)(schemaCodec(using schema)))(equalTo(json))
+        assert(readFromString(json)(using schemaCodec(using schema)))(equalTo(value)) &&
+        assert(writeToString(value)(using schemaCodec(using schema)))(equalTo(json))
       }
     )
   )
