@@ -782,4 +782,17 @@ protected[jsoniter] object Data {
   object BacktickedFieldName {
     implicit val schema: Schema[BacktickedFieldName] = DeriveSchema.gen
   }
+
+  @noDiscriminator
+  sealed trait ComplexADT
+
+  object ComplexADT {
+
+    @rejectExtraFields
+    final case object Simple                 extends ComplexADT
+    final case class Value(value: String)    extends ComplexADT
+    final case class Nested(ref: ComplexADT) extends ComplexADT
+
+    implicit val schema: Schema[ComplexADT] = DeriveSchema.gen
+  }
 }
