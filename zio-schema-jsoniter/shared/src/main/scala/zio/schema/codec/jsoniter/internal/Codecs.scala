@@ -658,9 +658,7 @@ private[jsoniter] trait Codecs {
             val value   = map(schema.fieldName)
             val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
             val isNull  =
-              try
-                encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
-              catch { case ex if NonFatal(ex) => false }
+              encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
             if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
               out.writeKey(schema.fieldName)
               out.writeRawVal(encoded)
@@ -770,9 +768,7 @@ private[jsoniter] trait Codecs {
         val value   = schema.get(z)
         val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
         val isNull  =
-          try
-            encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
-          catch { case ex if NonFatal(ex) => false }
+          encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
         if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
           out.writeKey(schema.fieldName)
           out.writeRawVal(encoded)
