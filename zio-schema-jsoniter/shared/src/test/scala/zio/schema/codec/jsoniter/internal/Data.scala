@@ -795,4 +795,30 @@ protected[jsoniter] object Data {
 
     implicit val schema: Schema[ComplexADT] = DeriveSchema.gen
   }
+
+  @noDiscriminator
+  sealed trait ADTNoDiscriminator
+
+  object ADTNoDiscriminator {
+
+    @rejectExtraFields
+    final case object Simple                             extends ADTNoDiscriminator
+    final case class Value(value: Fallback[Int, String]) extends ADTNoDiscriminator
+    final case class Nested(ref: ADTWithDiscriminator)   extends ADTNoDiscriminator
+
+    implicit val schema: Schema[ADTNoDiscriminator] = DeriveSchema.gen
+  }
+
+  @discriminatorName("_type")
+  sealed trait ADTWithDiscriminator
+
+  object ADTWithDiscriminator {
+
+    @rejectExtraFields
+    final case object Simple                             extends ADTWithDiscriminator
+    final case class Value(value: Fallback[Int, String]) extends ADTWithDiscriminator
+    final case class Nested(ref: ADTNoDiscriminator)     extends ADTWithDiscriminator
+
+    implicit val schema: Schema[ADTWithDiscriminator] = DeriveSchema.gen
+  }
 }

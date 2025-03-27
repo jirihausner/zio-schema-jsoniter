@@ -169,11 +169,22 @@ private[jsoniter] trait EncoderDecoderSpecs {
           assertEncodesThenDecodes(Schema[BigEnum3], BigEnum3.Case00(123.toByte)),
         ),
       ),
-      test("of nested case classes and case objects without annotation")(
-        assertEncodesThenDecodes(
-          Schema[ComplexADT],
-          ComplexADT.Nested(ComplexADT.Nested(ComplexADT.Nested(ComplexADT.Value("value")))),
-          debug = true,
+      suite("of nested case classes and case objects without annotation")(
+        test("simple nested case")(
+          assertEncodesThenDecodes(
+            Schema[ComplexADT],
+            ComplexADT.Nested(ComplexADT.Nested(ComplexADT.Nested(ComplexADT.Value("value")))),
+          ),
+        ),
+        test("complex nested case")(
+          assertEncodesThenDecodes(
+            Schema[ADTNoDiscriminator],
+            ADTNoDiscriminator.Nested(
+              ADTWithDiscriminator.Nested(
+                ADTNoDiscriminator.Nested(ADTWithDiscriminator.Value(Fallback.Right("value"))),
+              ),
+            ),
+          ),
         ),
       ),
     ),

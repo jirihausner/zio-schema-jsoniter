@@ -25,11 +25,6 @@ private[jsoniter] trait Codecs {
   type KeyEncoder[A] = (A, JsonWriter) => Unit
   type KeyDecoder[A] = (JsonReader) => A
 
-  trait EncodeOnlyJsonValueCodec[A] extends JsonValueCodec[A] {
-    override def decodeValue(in: JsonReader, default: A): A = in.decodeError("unsupported operation")
-    override def nullValue: A                               = null.asInstanceOf[A]
-  }
-
   type DiscriminatorTuple = Option[(String, String)]
 
   def encodeChunk[A](implicit encoder: Encoder[A]): Encoder[Chunk[A]] =
@@ -637,14 +632,8 @@ private[jsoniter] trait Codecs {
     } else {
       new Encoder[ListMap[String, Any]] {
 
-        val fieldEncoders = nonTransientFields.map { field =>
-          new EncodeOnlyJsonValueCodec[Any] {
-
-            @inline
-            def encodeValue(x: Any, out: JsonWriter): Unit =
-              encodeSchema(field.schema.asInstanceOf[Schema[Any]], config)(x, out)
-          }
-        }
+        val fieldEncoders =
+          nonTransientFields.map(field => encodeSchema(field.schema.asInstanceOf[Schema[Any]], config))
 
         def apply(map: ListMap[String, Any], out: JsonWriter): Unit = {
           out.writeObjectStart()
@@ -654,14 +643,17 @@ private[jsoniter] trait Codecs {
           }
           var i = 0
           while (i < nonTransientFields.length) {
-            val schema  = nonTransientFields(i)
-            val value   = map(schema.fieldName)
-            val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
-            val isNull  =
-              encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
-            if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
+            val schema = nonTransientFields(i)
+            val value  = map(schema.fieldName)
+            if (
+              !isEmptyOptionalValue(
+                schema,
+                value,
+                config,
+              ) && ((value != null && value != None) || !config.ignoreNullValues)
+            ) {
               out.writeKey(schema.fieldName)
-              out.writeRawVal(encoded)
+              fieldEncoders(i)(value, out)
             }
             i += 1
           }
@@ -748,13 +740,7 @@ private[jsoniter] trait Codecs {
   def encodeCaseClass[Z](schema: Schema.Record[Z], config: JsoniterCodec.Config, discriminatorTuple: DiscriminatorTuple): Encoder[Z] = new Encoder[Z] {
 
     val nonTransientFields = schema.nonTransientFields.map(_.asInstanceOf[Schema.Field[Z, Any]]).toArray
-    val fieldEncoders      = nonTransientFields.map { field =>
-      new EncodeOnlyJsonValueCodec[Any] {
-
-        @inline
-        def encodeValue(x: Any, out: JsonWriter): Unit = encodeSchema(field.schema, config)(x, out)
-      }
-    }
+    val fieldEncoders      = nonTransientFields.map(field => encodeSchema(field.schema, config))
 
     def apply(z: Z, out: JsonWriter): Unit = {
       out.writeObjectStart()
@@ -764,14 +750,11 @@ private[jsoniter] trait Codecs {
       }
       var i = 0
       while (i < nonTransientFields.length) {
-        val schema  = nonTransientFields(i)
-        val value   = schema.get(z)
-        val encoded = writeToArrayReentrant(value)(fieldEncoders(i))
-        val isNull  =
-          encoded.size == 4 && encoded(0) == 'n' && encoded(1) == 'u' && encoded(2) == 'l' && encoded(3) == 'l'
-        if (!isEmptyOptionalValue(schema, value, config) && (!isNull || !config.ignoreNullValues)) {
+        val schema = nonTransientFields(i)
+        val value  = schema.get(z)
+        if (!isEmptyOptionalValue(schema, value, config) && ((value != null && value != None) || !config.ignoreNullValues)) {
           out.writeKey(schema.fieldName)
-          out.writeRawVal(encoded)
+          fieldEncoders(i)(value, out)
         }
         i += 1
       }
