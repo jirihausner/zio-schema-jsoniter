@@ -15,12 +15,39 @@
 In order to use this library, you need to add one following line in your `build.sbt` file:
 
 ```scala
-libraryDependencies += "io.github.jirihausner" %% "zio-schema-jsoniter" % "X.Y.Z"
+libraryDependencies += "io.github.jirihausner" %% "zio-schema-jsoniter" % "0.1.0"
 ```
 
 ## Example
 
-TODO
+```scala
+import com.github.plokhotnyuk.jsoniter_scala.core.{JsonValueCodec, readFromString, writeToString}
+import zio.schema.codec.jsoniter.JsoniterCodec
+import zio.schema.{DeriveSchema, Schema}
+
+case class Person(name: String, age: Int)
+
+object Person {
+  implicit val schema: Schema[Person] = DeriveSchema.gen
+}
+
+// derive JsonValueCodec[A] from Schema[A]
+implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaCodec(Person.schema)
+
+readFromString[Person]("""{"name": "John", "age": 30}""") // Person("John", 30)
+writeToString(Person("Adam", 24))
+
+// use existing JsonValueCodec[A] as BinaryCodec[A]
+import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
+import zio.schema.codec.jsoniter.JsoniterCodec.jsoniterBinaryCodec
+
+jsoniterBinaryCodec[Person](JsonCodecMaker.make[Person]) // zio.schema.codec.BinaryCodec[Person]
+
+// derive JsonValueCodec[A] from Schema[A]
+import zio.schema.codec.jsoniter.JsoniterCodec.schemaBasedBinaryCodec
+
+schemaBasedBinaryCodec[Person](JsoniterCodec.Config.default) // zio.schema.codec.BinaryCodec[Person]
+```
 
 ## Acknowledgements
 
