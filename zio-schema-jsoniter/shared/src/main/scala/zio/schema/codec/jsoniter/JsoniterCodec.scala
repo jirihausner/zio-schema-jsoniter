@@ -78,12 +78,6 @@ object JsoniterCodec {
         }
   }
 
-  def schemaCodec[A](schema: Schema[A])(implicit config: Config = Config.default): JsonValueCodec[A] = {
-    new JsonValueCodec[A] {
-      override def decodeValue(in: JsonReader, default: A): A = Codecs.decodeSchema(schema)(in, default)
-      override def encodeValue(a: A, out: JsonWriter): Unit   = Codecs.encodeSchema(schema, config)(a, out)
-      @inline
-      override def nullValue: A                               = schema.defaultValue.getOrElse(null.asInstanceOf[A])
-    }
-  }
+  def schemaCodec[A](schema: Schema[A])(implicit config: Config = Config.default): JsonValueCodec[A] =
+    Codecs.schemaCodec(schema, config)
 }
