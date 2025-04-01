@@ -21,8 +21,6 @@ libraryDependencies += "io.github.jirihausner" %% "zio-schema-jsoniter" % "0.1.0
 ## Example
 
 ```scala
-import com.github.plokhotnyuk.jsoniter_scala.core.{JsonValueCodec, readFromString, writeToString}
-import zio.schema.codec.jsoniter.JsoniterCodec
 import zio.schema.{DeriveSchema, Schema}
 
 case class Person(name: String, age: Int)
@@ -31,22 +29,25 @@ object Person {
   implicit val schema: Schema[Person] = DeriveSchema.gen
 }
 
-// derive JsonValueCodec[A] from Schema[A]
-implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaCodec(Person.schema)
+// derive JsonValueCodec[A] from implicit Schema[A]
+import com.github.plokhotnyuk.jsoniter_scala.core.{JsonValueCodec, readFromString, writeToString}
+import zio.schema.codec.jsoniter.JsoniterCodec
+
+implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaJsonValueCodec(Person.schema)
 
 readFromString[Person]("""{"name": "John", "age": 30}""") // Person("John", 30)
 writeToString(Person("Adam", 24))
 
-// use existing JsonValueCodec[A] as BinaryCodec[A]
+// derive BinaryCodec[A] from implicit JsonValueCodec[A]
 import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
-import zio.schema.codec.jsoniter.JsoniterCodec.jsoniterBinaryCodec
+import zio.schema.codec.jsoniter.JsoniterCodec.jsonValueBinaryCodec
 
-jsoniterBinaryCodec[Person](JsonCodecMaker.make[Person]) // zio.schema.codec.BinaryCodec[Person]
+jsonValueBinaryCodec[Person](JsonCodecMaker.make[Person]) // zio.schema.codec.BinaryCodec[Person]
 
-// derive JsonValueCodec[A] from Schema[A]
+// derive BinaryCodec[A] backed by JsonValueCodec[A] from implicit Schema[A] directly
 import zio.schema.codec.jsoniter.JsoniterCodec.schemaBasedBinaryCodec
 
-schemaBasedBinaryCodec[Person](JsoniterCodec.Config.default) // zio.schema.codec.BinaryCodec[Person]
+schemaBasedBinaryCodec[Person](Person.schema) // zio.schema.codec.BinaryCodec[Person]
 ```
 
 ## Acknowledgements

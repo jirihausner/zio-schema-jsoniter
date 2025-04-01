@@ -32,7 +32,7 @@ object JsoniterCodecJVMSpec extends ZIOSpecDefault {
   )
 
   private def assertDecodesJson[A](schema: Schema[A], value: A, json: String) = {
-    implicit val codec: JsonValueCodec[A] = JsoniterCodec.schemaCodec(schema)
+    implicit val codec: JsonValueCodec[A] = JsoniterCodec.schemaJsonValueCodec(schema)
     val either                            =
       try Right(readFromString(json))
       catch { case ex if NonFatal(ex) => Left(ex) }
@@ -40,7 +40,7 @@ object JsoniterCodecJVMSpec extends ZIOSpecDefault {
   }
 
   private def assertDecodesJsonFailure[A](schema: Schema[A], json: String) = {
-    implicit val codec: JsonValueCodec[A] = JsoniterCodec.schemaCodec(schema)
+    implicit val codec: JsonValueCodec[A] = JsoniterCodec.schemaJsonValueCodec(schema)
     val either                            =
       try Right(readFromString(json))
       catch { case ex if NonFatal(ex) => Left(ex) }
