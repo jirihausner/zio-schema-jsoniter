@@ -12,7 +12,8 @@ import scala.util.Try
 
 object VersionSpecificJsoniterCodecSpec extends VersionSpecificCodecSpec {
 
-  override protected def schemaCodec[A: Schema]: JsonValueCodec[A] = JsoniterCodec.schemaCodec(Schema[A])
+  override protected def schemaCodec[A: Schema]: JsonValueCodec[A] =
+    JsoniterCodec.schemaJsonValueCodec(Schema[A])
 
   def spec: Spec[TestEnvironment, Any] =
     suite("VersionSpecificJsoniterCodecSpec")(
