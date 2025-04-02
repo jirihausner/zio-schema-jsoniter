@@ -29,22 +29,22 @@ object Person {
   implicit val schema: Schema[Person] = DeriveSchema.gen
 }
 
-// derive JsonValueCodec[A] from implicit Schema[A]
+// derive `JsonValueCodec[A]` from implicit `Schema[A]`
 import com.github.plokhotnyuk.jsoniter_scala.core.{JsonValueCodec, readFromString, writeToString}
 import zio.schema.codec.jsoniter.JsoniterCodec
 
 implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaJsonValueCodec(Person.schema)
 
 readFromString[Person]("""{"name": "John", "age": 30}""") // Person("John", 30)
-writeToString(Person("Adam", 24))
+writeToString(Person("Adam", 24))                         // "{"name":"Adam","age":24}"
 
-// derive BinaryCodec[A] from implicit JsonValueCodec[A]
+// derive `BinaryCodec[A]` from implicit `JsonValueCodec[A]`
 import com.github.plokhotnyuk.jsoniter_scala.macros.JsonCodecMaker
 import zio.schema.codec.jsoniter.JsoniterCodec.jsonValueBinaryCodec
 
 jsonValueBinaryCodec[Person](JsonCodecMaker.make[Person]) // zio.schema.codec.BinaryCodec[Person]
 
-// derive BinaryCodec[A] backed by JsonValueCodec[A] from implicit Schema[A] directly
+// derive `BinaryCodec[A]` backed by `JsonValueCodec[A]` from implicit `Schema[A]` directly
 import zio.schema.codec.jsoniter.JsoniterCodec.schemaBasedBinaryCodec
 
 schemaBasedBinaryCodec[Person](Person.schema) // zio.schema.codec.BinaryCodec[Person]
