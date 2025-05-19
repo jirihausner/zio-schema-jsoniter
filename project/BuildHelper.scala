@@ -28,7 +28,9 @@ object BuildHelper {
 
   val Scala212: String = versions("2.12")
   val Scala213: String = versions("2.13")
-  val Scala3: String   = versions("3.5")
+  val Scala3: String   = versions("3.3")
+
+  val BinCompatVersionToCompare: Option[String] = None
 
   object Versions {
 
@@ -47,6 +49,7 @@ object BuildHelper {
       "-feature",
       "-unchecked",
       "-language:existentials",
+      "-language:implicitConversions",
     ) ++ {
       if (sys.env.contains("CI")) {
         Seq("-Xfatal-warnings")
@@ -77,9 +80,8 @@ object BuildHelper {
     val extraOptions = CrossVersion.partialVersion(scalaVersion) match {
       case Some((3, _))  =>
         Seq(
-          "-language:implicitConversions",
           "-Xignore-scala2-macros",
-          "-Xkind-projector",
+          "-Ykind-projector",
         )
       case Some((2, 13)) =>
         Seq(
@@ -99,6 +101,7 @@ object BuildHelper {
           "-Ywarn-nullary-override",
           "-Ywarn-nullary-unit",
           "-Wconf:cat=unused-nowarn:s",
+          "-Wconf:cat=deprecation:silent",
         ) ++ std2xOptions ++ optimizerOptions
       case _             => Seq.empty
     }
@@ -224,18 +227,21 @@ object BuildHelper {
       incOptions ~= (_.withLogRecompileOnMacro(true)),
       autoAPIMappings               := true,
       testFrameworks                := Seq(new TestFramework("zio.test.sbt.ZTestFramework")),
-      mimaPreviousArtifacts         := previousStableVersion.value.map(organization.value %% name.value % _).toSet,
       mimaCheckDirection            := "backward",
       mimaFailOnProblem             := true,
+      mimaFailOnNoPrevious          := false,
+      mimaPreviousArtifacts         := {
+        BinCompatVersionToCompare match {
+          case Some(version) => Set(organization.value %% name.value % version)
+          case None          =>
+            previousStableVersion.value.flatMap { stableVersion =>
+              val current  = version.value.takeWhile(_ != '.')
+              val previous = stableVersion.takeWhile(_ != '.')
+              if (current == previous) Some(organization.value %% name.value % stableVersion)
+              else None
+            }.toSet
+        }
+      },
+      mimaReportSignatureProblems   := true,
     )
-
-  def mimaSettings(binCompatVersionToCompare: Option[String], failOnProblem: Boolean): Seq[Def.Setting[?]] =
-    binCompatVersionToCompare match {
-      case None                   => Seq(mimaPreviousArtifacts := Set.empty)
-      case Some(binCompatVersion) =>
-        Seq(
-          mimaPreviousArtifacts := Set(organization.value %% name.value % binCompatVersion),
-          mimaFailOnProblem     := failOnProblem,
-        )
-    }
 }
