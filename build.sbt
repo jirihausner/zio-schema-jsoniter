@@ -2,8 +2,6 @@ import BuildHelper._
 import com.typesafe.tools.mima.plugin.MimaKeys.mimaPreviousArtifacts
 import xerial.sbt.Sonatype.sonatypeCentralHost
 
-lazy val binCompatVersionToCompare = None
-
 inThisBuild(
   List(
     organization := "io.github.jirihausner",
@@ -64,7 +62,6 @@ lazy val zioSchemaJsoniter =
     .enablePlugins(BuildInfoPlugin)
     .settings(stdSettings("zio-schema-jsoniter"))
     .settings(buildInfoSettings("zio.schema.codec.jsoniter"))
-    .settings(mimaSettings(binCompatVersionToCompare, failOnProblem = true))
     .settings(dottySettings)
     .settings(
       libraryDependencies ++= Seq(
