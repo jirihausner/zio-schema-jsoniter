@@ -1,4 +1,5 @@
 import BuildHelper._
+import com.typesafe.tools.mima.core._
 import com.typesafe.tools.mima.plugin.MimaKeys.mimaPreviousArtifacts
 import xerial.sbt.Sonatype.sonatypeCentralHost
 
@@ -60,9 +61,14 @@ lazy val zioSchemaJsoniter =
   crossProject(JSPlatform, JVMPlatform, NativePlatform)
     .in(file("zio-schema-jsoniter"))
     .enablePlugins(BuildInfoPlugin)
-    .settings(stdSettings("zio-schema-jsoniter"))
+    .settings(stdSettings("zio-schema-jsoniter-scala"))
     .settings(buildInfoSettings("zio.schema.codec.jsoniter"))
     .settings(dottySettings)
+    .settings(
+      mimaBinaryIssueFilters ++= Seq(
+        ProblemFilters.exclude[Problem]("zio.schema.codec.jsoniter.internal.*"),
+      ),
+    )
     .settings(
       libraryDependencies ++= Seq(
         "com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-core"     % Versions.jsoniter,

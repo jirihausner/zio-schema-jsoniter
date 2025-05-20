@@ -18,7 +18,7 @@ private[jsoniter] trait Codecs {
 
   private case class CodecKey[A](
     schema: Schema[A],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String],
   ) {
     override val hashCode: Int             =
@@ -33,7 +33,7 @@ private[jsoniter] trait Codecs {
 
   def schemaCodec[A](
     schema: Schema[A],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String] = None,
   ): JsonValueCodec[A] = {
     val key                      = CodecKey(schema, config, discriminator)
@@ -47,7 +47,7 @@ private[jsoniter] trait Codecs {
 
   def schemaCodecSlow[A](
     schema: Schema[A],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String] = None,
   ): JsonValueCodec[A] = schema match {
     case Schema.Primitive(standardType, _)           => primitiveCodec(standardType)
@@ -205,7 +205,7 @@ private[jsoniter] trait Codecs {
       primitive(in => java.util.Currency.getInstance(in.readString(null)), (a, out) => out.writeVal(a.toString))
   }
 
-  def optionCodec[A](schema: Schema[A], config: JsoniterCodec.Config): JsonValueCodec[Option[A]] = {
+  def optionCodec[A](schema: Schema[A], config: JsoniterCodec.Configuration): JsonValueCodec[Option[A]] = {
     if (schema.isInstanceOf[Schema.Record[_]] || schema.isInstanceOf[Schema.Enum[_]]) {
       new JsonValueCodec[Option[A]] {
         val codec = schemaCodec(schema, config)
@@ -251,7 +251,11 @@ private[jsoniter] trait Codecs {
     }
   }
 
-  def tupleCodec[A, B](left: Schema[A], right: Schema[B], config: JsoniterCodec.Config): JsonValueCodec[(A, B)] = {
+  def tupleCodec[A, B](
+    left: Schema[A],
+    right: Schema[B],
+    config: JsoniterCodec.Configuration,
+  ): JsonValueCodec[(A, B)] = {
     new JsonValueCodec[(A, B)] {
       val leftCodec  = schemaCodec(left, config)
       val rightCodec = schemaCodec(right, config)
@@ -347,7 +351,7 @@ private[jsoniter] trait Codecs {
   def mapCodec[K, V](
     ks: Schema[K],
     vs: Schema[V],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
   ): JsonValueCodec[Map[K, V]] = keyCodec(ks) match {
     case Some(keyCodec) =>
       new JsonValueCodec[Map[K, V]] {
@@ -398,7 +402,7 @@ private[jsoniter] trait Codecs {
   def nonEmptyMapCodec[K, V](
     ks: Schema[K],
     vs: Schema[V],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
   ): JsonValueCodec[NonEmptyMap[K, V]] =
     new JsonValueCodec[NonEmptyMap[K, V]] {
       val codec = mapCodec(ks, vs, config)
@@ -418,7 +422,7 @@ private[jsoniter] trait Codecs {
     f: B => Either[String, A],
     g: A => Either[String, B],
     annotations: Chunk[Any],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String],
   ): JsonValueCodec[A] =
     new JsonValueCodec[A] {
@@ -438,7 +442,11 @@ private[jsoniter] trait Codecs {
       override def nullValue: A = null.asInstanceOf[A]
     }
 
-  def eitherCodec[A, B](left: Schema[A], right: Schema[B], config: JsoniterCodec.Config): JsonValueCodec[Either[A, B]] =
+  def eitherCodec[A, B](
+    left: Schema[A],
+    right: Schema[B],
+    config: JsoniterCodec.Configuration,
+  ): JsonValueCodec[Either[A, B]] =
     new JsonValueCodec[Either[A, B]] {
       val leftCodec  = schemaCodec(left, config)
       val rightCodec = schemaCodec(right, config)
@@ -468,7 +476,7 @@ private[jsoniter] trait Codecs {
   def fallbackCodec[A, B](
     left: Schema[A],
     right: Schema[B],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     fullDecode: Boolean,
   ): JsonValueCodec[Fallback[A, B]] =
     new JsonValueCodec[Fallback[A, B]] {
@@ -531,7 +539,7 @@ private[jsoniter] trait Codecs {
 
   def lazyCodec[A](
     schema: Schema.Lazy[A],
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String],
   ): JsonValueCodec[A] =
     new JsonValueCodec[A] {
@@ -542,31 +550,49 @@ private[jsoniter] trait Codecs {
       override def nullValue: A                                 = null.asInstanceOf[A]
     }
 
-  def isEmptyOptionalValue(schema: Schema.Field[_, _], value: Any, config: JsoniterCodec.Config): Boolean = {
-    (config.ignoreEmptyCollections || schema.optional) && (value match {
-      case None                  => true
-      case iterable: Iterable[_] => iterable.isEmpty
-      case _                     => false
+  private def isEmptyOptionalValue(
+    schema: Schema.Field[_, _],
+    value: Any,
+    config: JsoniterCodec.Configuration,
+  ): Boolean = {
+    (!config.explicitEmptyCollections.encoding || schema.optional) && (value match {
+      case None            => true
+      case it: Iterable[_] => it.isEmpty
+      case _               => false
     })
   }
 
   def recordCodec[Z](
     schema: Schema.GenericRecord,
-    config: JsoniterCodec.Config,
+    config: JsoniterCodec.Configuration,
     discriminator: Option[String],
   ): JsonValueCodec[ListMap[String, Any]] = discriminator match {
     case Some(discriminator) =>
       new JsonValueCodec[ListMap[String, Any]] {
 
-        val fields                 = schema.fields.toArray
-        val codecs                 =
+        val len             = schema.fields.length
+        val fields          = schema.fields.toArray
+        val codecs          =
           fields.map(field => schemaCodec(field.schema.asInstanceOf[Schema[Any]], config))
-        val fieldsWithCodec        = new java.util.HashMap[String, (String, JsonValueCodec[Any])](fields.size << 1)
+        val names           = new Array[String](len)
+        val fieldsWithCodec = new java.util.HashMap[String, (String, JsonValueCodec[Any])](fields.size << 1)
+
+        var i = 0
         fields.foreach { field =>
           val codec = schemaCodec(field.schema, config).asInstanceOf[JsonValueCodec[Any]]
-          field.nameAndAliases.foreach(fieldsWithCodec.put(_, (field.fieldName, codec)))
+          val name  =
+            if (config.fieldNameFormat == NameFormat.Identity) field.fieldName
+            else if (field.fieldName == field.name) config.fieldNameFormat(field.fieldName)
+            else field.fieldName
+          names(i) = name
+          fieldsWithCodec.put(name, (name, codec))
+          field.aliases.foreach(fieldsWithCodec.put(_, (name, codec)))
+          i += 1
         }
-        val rejectAdditionalFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
+
+        val explicitEmptyCollections = config.explicitEmptyCollections.decoding
+        val explicitNulls            = config.explicitNullValues.decoding
+        val rejectExtraFields        = schema.rejectExtraFields || config.rejectExtraFields
 
         override def decodeValue(in: JsonReader, default: ListMap[String, Any]): ListMap[String, Any] = {
           var continue = !in.isNextToken('}')
@@ -580,7 +606,7 @@ private[jsoniter] trait Codecs {
               val (fieldName, codec) = fieldWithCodec
               val prev               = map.put(fieldName, codec.decodeValue(in, null.asInstanceOf[Any]))
               if (prev != null) in.decodeError(s"duplicate field $fieldNameOrAlias")
-            } else if (!rejectAdditionalFields || discriminator.contains(fieldNameOrAlias)) {
+            } else if (!rejectExtraFields || discriminator.contains(fieldNameOrAlias)) {
               in.skip()
             } else in.decodeError(s"extra field $fieldNameOrAlias")
             continue = in.isNextToken(',')
@@ -589,8 +615,7 @@ private[jsoniter] trait Codecs {
           var idx      = 0
           while (idx < fields.length) {
             val field     = fields(idx)
-            idx += 1
-            val fieldName = field.fieldName // reuse strings with calculated hashCode
+            val fieldName = names(idx)
             if (map.get(fieldName) == null) {
               map.put( // mitigation of a linking error for `map.computeIfAbsent` in Scala.js
                 fieldName, {
@@ -603,15 +628,16 @@ private[jsoniter] trait Codecs {
                       case _                 =>
                     }
                     schema match {
-                      case _: Schema.Optional[_]               => None
-                      case collection: Schema.Collection[_, _] => collection.empty
-                      case _                                   =>
-                        in.decodeError(s"missing field ${fieldsWithCodec.get(fieldName)._1}")
+                      case collection: Schema.Collection[_, _] if !explicitEmptyCollections => collection.empty
+                      case _: Schema.Optional[_] if !explicitNulls                          => None
+                      case _                                                                =>
+                        in.decodeError(s"missing field $fieldName")
                     }
                   }
                 },
               )
             }
+            idx += 1
           }
           (ListMap.newBuilder[String, Any] ++= ({ // to avoid O(n) insert operations
             import scala.collection.JavaConverters.mapAsScalaMapConverter // use deprecated class for Scala 2.12 compatibility
@@ -625,15 +651,16 @@ private[jsoniter] trait Codecs {
           while (i < fields.length) {
             val schema = fields(i)
             if (!schema.transient) {
-              val value = xs(schema.fieldName)
+              val key   = names(i)
+              val value = xs(key)
               if (
                 !isEmptyOptionalValue(
                   schema,
                   value,
                   config,
-                ) && ((value != null && value != None) || !config.ignoreNullValues)
+                ) && ((value != null && value != None) || config.explicitNullValues.encoding)
               ) {
-                out.writeKey(schema.fieldName)
+                out.writeKey(key)
                 codecs(i).encodeValue(value, out)
               }
             }
@@ -647,15 +674,29 @@ private[jsoniter] trait Codecs {
     case None =>
       new JsonValueCodec[ListMap[String, Any]] {
 
-        val fields                 = schema.fields.toArray
-        val codecs                 =
+        val len             = schema.fields.length
+        val fields          = schema.fields.toArray
+        val codecs          =
           fields.map(field => schemaCodec(field.schema.asInstanceOf[Schema[Any]], config))
-        val fieldsWithCodec        = new java.util.HashMap[String, (String, JsonValueCodec[Any])](fields.size << 1)
+        val names           = new Array[String](len)
+        val fieldsWithCodec = new java.util.HashMap[String, (String, JsonValueCodec[Any])](fields.size << 1)
+
+        var i = 0
         fields.foreach { field =>
           val codec = schemaCodec(field.schema, config).asInstanceOf[JsonValueCodec[Any]]
-          field.nameAndAliases.foreach(fieldsWithCodec.put(_, (field.fieldName, codec)))
+          val name  =
+            if (config.fieldNameFormat == NameFormat.Identity) field.fieldName
+            else if (field.fieldName == field.name) config.fieldNameFormat(field.fieldName)
+            else field.fieldName
+          names(i) = name
+          fieldsWithCodec.put(name, (name, codec))
+          field.aliases.foreach(fieldsWithCodec.put(_, (name, codec)))
+          i += 1
         }
-        val rejectAdditionalFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
+
+        val explicitEmptyCollections = config.explicitEmptyCollections.decoding
+        val explicitNulls            = config.explicitNullValues.decoding
+        val rejectExtraFields        = schema.rejectExtraFields || config.rejectExtraFields
 
         override def decodeValue(in: JsonReader, default: ListMap[String, Any]): ListMap[String, Any] = {
           if (!in.isNextToken('{')) in.decodeError("expected '{'")
@@ -669,7 +710,7 @@ private[jsoniter] trait Codecs {
               val (fieldName, codec) = fieldWithCodec
               val prev               = map.put(fieldName, codec.decodeValue(in, null.asInstanceOf[Any]))
               if (prev != null) in.decodeError(s"duplicate field $fieldNameOrAlias")
-            } else if (!rejectAdditionalFields) {
+            } else if (!rejectExtraFields) {
               in.skip()
             } else in.decodeError(s"extra field $fieldNameOrAlias")
             continue = in.isNextToken(',')
@@ -678,7 +719,7 @@ private[jsoniter] trait Codecs {
           var idx      = 0
           while (idx < fields.length) {
             val field     = fields(idx)
-            val fieldName = field.fieldName // reuse strings with calculated hashCode
+            val fieldName = names(idx)
             if (map.get(fieldName) == null) {
               map.put( // mitigation of a linking error for `map.computeIfAbsent` in Scala.js
                 fieldName, {
@@ -691,10 +732,10 @@ private[jsoniter] trait Codecs {
                       case _                 =>
                     }
                     schema match {
-                      case _: Schema.Optional[_]               => None
-                      case collection: Schema.Collection[_, _] => collection.empty
-                      case _                                   =>
-                        in.decodeError(s"missing field ${fieldsWithCodec.get(fieldName)._1}")
+                      case collection: Schema.Collection[_, _] if !explicitEmptyCollections => collection.empty
+                      case _: Schema.Optional[_] if !explicitNulls                          => None
+                      case _                                                                =>
+                        in.decodeError(s"missing field $fieldName")
                     }
                   }
                 },
@@ -715,15 +756,16 @@ private[jsoniter] trait Codecs {
           while (i < fields.length) {
             val schema = fields(i)
             if (!schema.transient) {
-              val value = xs(schema.fieldName)
+              val key   = names(i)
+              val value = xs(key)
               if (
                 !isEmptyOptionalValue(
                   schema,
                   value,
                   config,
-                ) && ((value != null && value != None) || !config.ignoreNullValues)
+                ) && ((value != null && value != None) || config.explicitNullValues.encoding)
               ) {
-                out.writeKey(schema.fieldName)
+                out.writeKey(key)
                 codecs(i).encodeValue(value, out)
               }
             }
@@ -737,7 +779,7 @@ private[jsoniter] trait Codecs {
   }
 
   // scalafmt: { maxColumn = 400, optIn.configStyleArguments = false }
-  def caseClassCodec[Z](schema: Schema.Record[Z], config: JsoniterCodec.Config, discriminator: Option[String]): JsonValueCodec[Z] = {
+  def caseClassCodec[Z](schema: Schema.Record[Z], config: JsoniterCodec.Configuration, discriminator: Option[String]): JsonValueCodec[Z] = {
 
     discriminator match {
       case None =>
@@ -746,24 +788,26 @@ private[jsoniter] trait Codecs {
           val len     = schema.fields.length
           val fields  = new Array[Schema.Field[Z, _]](len)
           val codecs  = new Array[JsonValueCodec[Any]](len)
-          val names   = Array.newBuilder[String]
+          val names   = new Array[String](len)
           val aliases = new java.util.HashMap[String, Int](len << 1)
 
           var i = 0
           schema.fields.foreach { field =>
             fields(i) = field
             codecs(i) = schemaCodec(field.schema, config).asInstanceOf[JsonValueCodec[Any]]
-            val name = field.fieldName
-            names += name
+            val name =
+              if (config.fieldNameFormat == NameFormat.Identity) field.fieldName
+              else if (field.fieldName == field.name) config.fieldNameFormat(field.fieldName)
+              else field.fieldName
+            names(i) = name
             aliases.put(name, i)
-            field.annotations.foreach {
-              case fna: fieldNameAliases => fna.aliases.foreach(a => aliases.put(a, i))
-              case _                     =>
-            }
+            field.aliases.foreach(aliases.put(_, i))
             i += 1
           }
 
-          val rejectExtraFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
+          val explicitEmptyCollections = config.explicitEmptyCollections.decoding
+          val explicitNulls            = config.explicitNullValues.decoding
+          val rejectExtraFields        = schema.rejectExtraFields || config.rejectExtraFields
 
           override def decodeValue(in: JsonReader, default: Z): Z = {
             if (!in.isNextToken('{')) in.decodeError("expected '{'")
@@ -795,9 +839,10 @@ private[jsoniter] trait Codecs {
                     case _                 =>
                   }
                   buffer(idx) = schema match {
-                    case _: Schema.Optional[_]               => None
-                    case collection: Schema.Collection[_, _] => collection.empty
-                    case _                                   => in.decodeError(s"missing field ${field.fieldName}")
+                    case collection: Schema.Collection[_, _] if !explicitEmptyCollections => collection.empty
+                    case _: Schema.Optional[_] if !explicitNulls                          => None
+                    case _                                                                =>
+                      in.decodeError(s"missing field ${names(idx)}")
                   }
                 }
               }
@@ -818,8 +863,8 @@ private[jsoniter] trait Codecs {
               val schema = fields(idx)
               if (!schema.transient) {
                 val value = schema.get(x)
-                if (!isEmptyOptionalValue(schema, value, config) && ((value != null && value != None) || !config.ignoreNullValues)) {
-                  out.writeKey(schema.fieldName)
+                if (!isEmptyOptionalValue(schema, value, config) && ((value != null && value != None) || config.explicitNullValues.encoding)) {
+                  out.writeKey(names(idx))
                   codecs(idx).encodeValue(value, out)
                 }
               }
@@ -837,25 +882,27 @@ private[jsoniter] trait Codecs {
           val len     = schema.fields.length
           val fields  = new Array[Schema.Field[Z, _]](len)
           val codecs  = new Array[JsonValueCodec[Any]](len)
-          val names   = Array.newBuilder[String]
+          val names   = new Array[String](len)
           val aliases = new java.util.HashMap[String, Int](len << 1)
 
           var i = 0
           schema.fields.foreach { field =>
             fields(i) = field
             codecs(i) = schemaCodec(field.schema, config).asInstanceOf[JsonValueCodec[Any]]
-            val name = field.fieldName
-            names += name
+            val name =
+              if (config.fieldNameFormat == NameFormat.Identity) field.fieldName
+              else if (field.fieldName == field.name) config.fieldNameFormat(field.fieldName)
+              else field.fieldName
+            names(i) = name
             aliases.put(name, i)
-            field.annotations.foreach {
-              case fna: fieldNameAliases => fna.aliases.foreach(a => aliases.put(a, i))
-              case _                     =>
-            }
+            field.aliases.foreach(aliases.put(_, i))
             i += 1
           }
           aliases.put(discriminator, i)
 
-          val rejectExtraFields = schema.annotations.exists(_.isInstanceOf[rejectExtraFields])
+          val explicitEmptyCollections = config.explicitEmptyCollections.decoding
+          val explicitNulls            = config.explicitNullValues.decoding
+          val rejectExtraFields        = schema.rejectExtraFields || config.rejectExtraFields
 
           override def decodeValue(in: JsonReader, default: Z): Z = {
             var continue = !in.isNextToken('}')
@@ -888,9 +935,10 @@ private[jsoniter] trait Codecs {
                     case _                 =>
                   }
                   buffer(idx) = schema match {
-                    case _: Schema.Optional[_]               => None
-                    case collection: Schema.Collection[_, _] => collection.empty
-                    case _                                   => in.decodeError(s"missing field ${field.fieldName}")
+                    case collection: Schema.Collection[_, _] if !explicitEmptyCollections => collection.empty
+                    case _: Schema.Optional[_] if !explicitNulls                          => None
+                    case _                                                                =>
+                      in.decodeError(s"missing field ${names(idx)}")
                   }
                 }
               }
@@ -910,8 +958,8 @@ private[jsoniter] trait Codecs {
               val schema = fields(idx)
               if (!schema.transient) {
                 val value = schema.get(x)
-                if (!isEmptyOptionalValue(schema, value, config) && ((value != null && value != None) || !config.ignoreNullValues)) {
-                  out.writeKey(schema.fieldName)
+                if (!isEmptyOptionalValue(schema, value, config) && ((value != null && value != None) || config.explicitNullValues.encoding)) {
+                  out.writeKey(names(idx))
                   codecs(idx).encodeValue(value, out)
                 }
               }
@@ -924,7 +972,12 @@ private[jsoniter] trait Codecs {
     }
   }
 
-  def enumCodec[Z](schema: Schema.Enum[Z], config: JsoniterCodec.Config): JsonValueCodec[Z] = {
+  def enumCodec[Z](schema: Schema.Enum[Z], config: JsoniterCodec.Configuration): JsonValueCodec[Z] = {
+
+    def format(caseName: String): String =
+      if (config.discriminatorFormat == NameFormat.Identity) caseName
+      else config.discriminatorFormat(caseName)
+
     val caseNameAliases = new mutable.HashMap[String, Schema.Case[Z, Any]]
     schema.cases.foreach { case_ =>
       val schema = case_.asInstanceOf[Schema.Case[Z, Any]]
@@ -940,11 +993,11 @@ private[jsoniter] trait Codecs {
       new JsonValueCodec[Z] {
         val decodingCases = new java.util.HashMap[String, Z](caseNameAliases.size << 1)
         caseNameAliases.foreach { case (name, _case) =>
-          decodingCases.put(name, _case.schema.asInstanceOf[Schema.CaseClass0[Z]].defaultConstruct())
+          decodingCases.put(format(name), _case.schema.asInstanceOf[Schema.CaseClass0[Z]].defaultConstruct())
         }
         val encodingCases = new java.util.HashMap[Z, String](schema.cases.size << 1)
         schema.nonTransientCases.foreach { _case =>
-          encodingCases.put(_case.schema.asInstanceOf[Schema.CaseClass0[Z]].defaultConstruct(), _case.caseName)
+          encodingCases.put(_case.schema.asInstanceOf[Schema.CaseClass0[Z]].defaultConstruct(), format(_case.caseName))
         }
 
         override def encodeValue(value: Z, out: JsonWriter): Unit = {
@@ -960,7 +1013,7 @@ private[jsoniter] trait Codecs {
         }
         override def nullValue: Z                                 = null.asInstanceOf[Z]
       }
-    } else if (schema.annotations.exists(_.isInstanceOf[noDiscriminator])) {
+    } else if (schema.noDiscriminator || config.noDiscriminator) {
       new JsonValueCodec[Z] {
         val cases  = schema.cases.toArray
         val codecs =
@@ -993,16 +1046,16 @@ private[jsoniter] trait Codecs {
         override def nullValue: Z = null.asInstanceOf[Z]
       }
     } else {
-      val discriminator = schema.annotations.collectFirst { case d: discriminatorName => d.tag }
+      val discriminator = schema.discriminatorName.orElse(config.discriminatorName)
       discriminator match {
         case None =>
           new JsonValueCodec[Z] {
             val cases        = schema.cases.toArray
-            val keys         = cases.map(_.caseName)
+            val keys         = cases.map { _case => format(_case.caseName) }
             val codecsLookup = new java.util.HashMap[String, JsonValueCodec[Any]](caseNameAliases.size << 1)
             val codecsArray  = cases.map { _case =>
               val codec = schemaCodec(_case.schema.asInstanceOf[Schema[Any]], config)
-              codecsLookup.put(_case.caseName, codec)
+              codecsLookup.put(format(_case.caseName), codec)
               _case.caseNameAliases.foreach(cna => codecsLookup.put(cna, codec))
               codec
             }
@@ -1044,11 +1097,11 @@ private[jsoniter] trait Codecs {
         case Some(discriminator) =>
           new JsonValueCodec[Z] {
             val cases        = schema.cases.toArray
-            val keys         = cases.map(_.caseName)
+            val keys         = cases.map { _case => format(_case.caseName) }
             val codecsLookup = new java.util.HashMap[String, JsonValueCodec[Any]](caseNameAliases.size << 1)
             val codecsArray  = cases.map { _case =>
               val codec = schemaCodec(_case.schema.asInstanceOf[Schema[Any]], config, Some(discriminator))
-              codecsLookup.put(_case.caseName, codec)
+              codecsLookup.put(format(_case.caseName), codec)
               _case.caseNameAliases.foreach(cna => codecsLookup.put(cna, codec))
               codec
             }
@@ -1101,7 +1154,18 @@ private[jsoniter] trait Codecs {
     }
   }
 
-  def dynamicCodec(schema: Schema.Dynamic, config: JsoniterCodec.Config): JsonValueCodec[DynamicValue] = {
+  private def isEmptyArray(value: DynamicValue): Boolean = value match {
+    case DynamicValue.Sequence(xs) if xs.isEmpty => true
+    case DynamicValue.SetValue(xs) if xs.isEmpty => true
+    case _                                       => false
+  }
+
+  private def isEmptyValue(value: DynamicValue): Boolean = value match {
+    case DynamicValue.NoneValue => true
+    case _                      => false
+  }
+
+  def dynamicCodec(schema: Schema.Dynamic, config: JsoniterCodec.Configuration): JsonValueCodec[DynamicValue] = {
     if (schema.annotations.exists(_.isInstanceOf[directDynamicMapping])) {
       new JsonValueCodec[DynamicValue] { codec =>
         override def decodeValue(in: JsonReader, default: DynamicValue): DynamicValue = {
@@ -1161,8 +1225,13 @@ private[jsoniter] trait Codecs {
           case DynamicValue.Record(_, values)              =>
             out.writeObjectStart()
             values.foreach { case (key, value) =>
-              out.writeKey(key)
-              codec.encodeValue(value, out)
+              if (
+                (config.explicitEmptyCollections.encoding || !isEmptyArray(value)) &&
+                (config.explicitNullValues.encoding || !isEmptyValue(value))
+              ) {
+                out.writeKey(key)
+                codec.encodeValue(value, out)
+              }
             }
             out.writeObjectEnd()
           case DynamicValue.Enumeration(_, _)              =>
