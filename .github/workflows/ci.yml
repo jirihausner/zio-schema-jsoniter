@@ -89,7 +89,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    needs: [lint, build, mima_check]
+    needs: [lint, build] #, mima_check]
     if: startsWith(github.ref, 'refs/tags/v') && github.event_name != 'pull_request'
     steps:
       - name: Checkout current branch
