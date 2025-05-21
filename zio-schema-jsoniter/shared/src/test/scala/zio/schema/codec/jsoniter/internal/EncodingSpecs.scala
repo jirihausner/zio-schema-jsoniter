@@ -3,6 +3,7 @@ package zio.schema.codec.jsoniter.internal
 import zio.prelude.NonEmptyMap
 import zio.schema._
 import zio.schema.annotation._
+import zio.schema.codec.jsoniter.JsoniterCodec.Configuration
 import zio.schema.codec.jsoniter.internal.Data._
 import zio.stream.ZStream
 import zio.test.Assertion._
@@ -15,21 +16,17 @@ import scala.collection.immutable.ListMap
 
 private[jsoniter] trait EncoderSpecs {
 
-  type Config
+  protected def IgnoreEmptyCollectionsConfig: Configuration       // should ignore empty collections
+  protected def KeepNullsAndEmptyColleciontsConfig: Configuration // should keep nulls and empty collections
+  protected def StreamingConfig: Configuration // should keep empty collections and treat streams as arrays
 
-  protected def DefaultConfig: Config // should keep empty collections but ignore nulls
-
-  protected def IgnoreEmptyCollectionsConfig: Config       // should ignore empty collections
-  protected def KeepNullsAndEmptyColleciontsConfig: Config // should keep nulls and empty collections
-  protected def StreamingConfig: Config                    // should keep empty collections and treat streams as arrays
-
-  protected def BinaryCodec[A]: (Schema[A], Config) => codec.BinaryCodec[A]
+  protected def BinaryCodec[A]: (Schema[A], Configuration) => codec.BinaryCodec[A]
 
   final protected def assertEncodes[A](
     schema: Schema[A],
     value: A,
     json: CharSequence,
-    config: Config = DefaultConfig,
+    config: Configuration = Configuration.default,
     debug: Boolean = false,
   ): ZIO[Any, Nothing, TestResult] = {
     val stream = ZStream
@@ -47,7 +44,7 @@ private[jsoniter] trait EncoderSpecs {
     schema: Schema[A],
     value: A,
     precision: java.math.BigDecimal => java.math.BigDecimal,
-    config: Config = DefaultConfig,
+    config: Configuration = Configuration.default,
     debug: Boolean = false,
   ): ZIO[Any, Nothing, TestResult] = {
     val json   = precision(new java.math.BigDecimal(value.toString)).stripTrailingZeros.toPlainString
@@ -71,7 +68,7 @@ private[jsoniter] trait EncoderSpecs {
     schema: Schema[A],
     values: Seq[A],
     json: CharSequence,
-    config: Config = DefaultConfig,
+    config: Configuration = Configuration.default,
     debug: Boolean = false,
   ): ZIO[Any, Nothing, TestResult] = {
     val stream = ZStream
@@ -612,6 +609,7 @@ private[jsoniter] trait EncoderSpecs {
               request.nextPage
                 .map(x => s""","nextPage":${stringify(x)}}""")
                 .getOrElse("""}"""),
+            Configuration.default.withNullValuesIgnored,
           )
         }
       },
@@ -627,6 +625,7 @@ private[jsoniter] trait EncoderSpecs {
           recordWithOptionSchema,
           ListMap[String, Any]("foo" -> Some("s"), "bar" -> None),
           """{"foo":"s"}""",
+          Configuration.default.withNullValuesIgnored,
         )
       },
       test("case class with option fields omitted when empty") {
@@ -634,6 +633,7 @@ private[jsoniter] trait EncoderSpecs {
           WithOptionFields.schema,
           WithOptionFields(Some("s"), None),
           """{"a":"s"}""",
+          Configuration.default.withNullValuesIgnored,
         )
       },
       test("case class with backticked field name") {
@@ -699,6 +699,7 @@ private[jsoniter] trait EncoderSpecs {
           Subscription.schema,
           Subscription.Unlimited(None),
           """{"type":"unlimited"}""",
+          Configuration.default.withNullValuesIgnored,
         )
       },
       suite("with no discriminator")(

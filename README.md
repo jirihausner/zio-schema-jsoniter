@@ -15,7 +15,7 @@
 In order to use this library, you need to add one following line in your `build.sbt` file:
 
 ```scala
-libraryDependencies += "io.github.jirihausner" %% "zio-schema-jsoniter" % "0.1.0"
+libraryDependencies += "io.github.jirihausner" %% "zio-schema-jsoniter-scala" % "0.1.0"
 ```
 
 ## Example
@@ -33,7 +33,7 @@ object Person {
 import com.github.plokhotnyuk.jsoniter_scala.core.{JsonValueCodec, readFromString, writeToString}
 import zio.schema.codec.jsoniter.JsoniterCodec
 
-implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaJsonValueCodec(Person.schema)
+implicit val codec: JsonValueCodec[Person] = JsoniterCodec.schemaJsonValueCodec[Person]
 
 readFromString[Person]("""{"name": "John", "age": 30}""") // Person("John", 30)
 writeToString(Person("Adam", 24))                         // "{"name":"Adam","age":24}"
@@ -47,7 +47,17 @@ jsonValueBinaryCodec[Person](JsonCodecMaker.make[Person]) // zio.schema.codec.Bi
 // derive `BinaryCodec[A]` backed by `JsonValueCodec[A]` from implicit `Schema[A]` directly
 import zio.schema.codec.jsoniter.JsoniterCodec.schemaBasedBinaryCodec
 
-schemaBasedBinaryCodec[Person](Person.schema) // zio.schema.codec.BinaryCodec[Person]
+schemaBasedBinaryCodec[Person] // zio.schema.codec.BinaryCodec[Person]
+
+// derive `BinaryCodec[A]` backed by `JsonValueCodec[A]` from implicit `Schema[A]` directly with custom configuration
+import zio.schema.NameFormat
+import zio.schema.codec.circe.Configuration
+
+val config = Configuration()
+  .withEmptyCollectionsIgnored
+  .withNullValuesIgnored
+  .withDiscriminator("type", format = NameFormat.SnakeCase)
+schemaBasedBinaryCodec[Person](config) // zio.schema.codec.BinaryCodec[Person]
 ```
 
 ## Acknowledgements
