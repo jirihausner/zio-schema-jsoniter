@@ -38,7 +38,7 @@ object BuildHelper {
     val scalaCollectionCompat = "2.10.0"
     val scalaJavaTime         = "2.6.0"
     val zio                   = "2.1.17"
-    val zioSchema             = "1.7.0"
+    val zioSchema             = "1.7.2"
   }
 
   def compilerOptions(scalaVersion: String, optimize: Boolean) = {
