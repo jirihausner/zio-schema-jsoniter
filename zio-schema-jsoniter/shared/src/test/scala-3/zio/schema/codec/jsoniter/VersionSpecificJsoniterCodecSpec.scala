@@ -12,6 +12,8 @@ import scala.util.Try
 
 object VersionSpecificJsoniterCodecSpec extends VersionSpecificCodecSpec {
 
+  implicit val config: JsoniterCodec.Configuration = JsoniterCodec.Configuration.default
+
   override protected def schemaCodec[A: Schema]: JsonValueCodec[A] =
     JsoniterCodec.schemaJsonValueCodec(Schema[A])
 
